@@ -15,8 +15,8 @@ export type Managers = {
   tmuxSessionManager: TmuxSessionManager
   backgroundManager: BackgroundManager
   skillMcpManager: SkillMcpManager
-  rlmContextManager: RlmContextManager
   configHandler: ReturnType<typeof createConfigHandler>
+  rlmContextManager?: RlmContextManager
 }
 
 export function createManagers(args: {
@@ -68,19 +68,21 @@ export function createManagers(args: {
 
   const skillMcpManager = new SkillMcpManager()
 
-  const rlmContextManager = new RlmContextManager()
-
   const configHandler = createConfigHandler({
     ctx: { directory: ctx.directory, client: ctx.client },
     pluginConfig,
     modelCacheState,
   })
 
+  const rlmContextManager = pluginConfig.experimental?.rlm?.enabled
+    ? new RlmContextManager()
+    : undefined
+
   return {
     tmuxSessionManager,
     backgroundManager,
     skillMcpManager,
-    rlmContextManager,
     configHandler,
+    rlmContextManager,
   }
 }

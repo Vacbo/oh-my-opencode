@@ -1,6 +1,6 @@
 import type { ToolContext } from "@opencode-ai/plugin/tool"
 import type { RlmBlobVariable } from "../../features/rlm-context/types"
-import type { RlmContextManagerForPlan } from "./tools"
+import type { RlmContextManagerForPlan } from "./plan-tool"
 import {
   chunkText,
   itemVariableName,

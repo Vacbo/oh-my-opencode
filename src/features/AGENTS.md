@@ -1,6 +1,6 @@
-# src/features/ — 19 Feature Modules
+# src/features/ — 20 Feature Modules
 
-**Generated:** 2026-02-24
+**Generated:** 2026-03-05
 
 ## OVERVIEW
 
@@ -19,15 +19,16 @@ Standalone feature modules wired into plugin/ layer. Each is self-contained with
 | **claude-code-plugin-loader** | 10 | MEDIUM | Unified plugin discovery from .opencode/plugins/ |
 | **builtin-commands** | 9 | LOW | Command templates: refactor, init-deep, handoff, etc. |
 | **claude-code-mcp-loader** | 5 | MEDIUM | .mcp.json loading with ${VAR} env expansion |
+| **run-continuation-state** | 5 | LOW | Persistent state for `run` command continuation across sessions |
 | **context-injector** | 4 | MEDIUM | AGENTS.md/README.md injection into context |
 | **boulder-state** | 4 | LOW | Persistent state for multi-step operations |
 | **hook-message-injector** | 4 | MEDIUM | System message injection for hooks |
 | **claude-tasks** | 4 | MEDIUM | Task schema + file storage + OpenCode todo sync |
+| **rlm-context** | 8 | MEDIUM | Symbolic context store: blob/manifest variables, session lifecycle, disk persistence |
 | **task-toast-manager** | 3 | MEDIUM | Task progress notifications |
 | **claude-code-agent-loader** | 3 | LOW | Load agents from .opencode/agents/ |
 | **claude-code-command-loader** | 3 | LOW | Load commands from .opencode/commands/ |
 | **claude-code-session-state** | 2 | LOW | Subagent session state tracking |
-| **run-continuation-state** | 5 | LOW | Persistent state for `run` command continuation across sessions |
 | **tool-metadata-store** | 2 | LOW | Tool execution metadata cache |
 
 ## KEY MODULES
@@ -55,6 +56,15 @@ State-first tmux integration:
 - Spawn action decider + target finder
 - Polling manager for session health
 - Event handlers for pane creation/destruction
+
+### rlm-context (8 files, ~1.2k LOC)
+
+Disk-backed symbolic variable store for RLM sessions:
+- `RlmContextManager`: session init, blob/manifest variables, deletion
+- Storage kinds: `blob` (opaque content) and `manifest` (ordered child lists)
+- Semantic types: `context`, `derived`, `result`, `scratch`
+- Path safety: traversal rejection, safe resolution under session dir
+- Session lifecycle: init → variable creation → inspection → deletion
 
 ### builtin-skills (6 skill objects)
 

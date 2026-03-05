@@ -1,7 +1,7 @@
 import type { ToolContext } from "@opencode-ai/plugin/tool"
 import type { RlmSessionState } from "../../features/rlm-context/types"
 import type { RlmPlanExecutorDeps } from "./plan-deps"
-import type { RlmContextManagerForPlan, RlmPlanToolOptions } from "./tools"
+import type { RlmContextManagerForPlan, RlmPlanToolOptions } from "./plan-tool"
 import type { SyncSubcallResult } from "./subcall-runner"
 import { fillTemplate, itemVariableName, requireBlob, resolveSubcallText } from "./plan-utils"
 

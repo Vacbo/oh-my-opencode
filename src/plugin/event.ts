@@ -239,7 +239,9 @@ export function createEventHandler(args: {
       if (sessionInfo?.id) {
         // RLM context cleanup: manager-based + filesystem fallback
         try {
-          await managers.rlmContextManager.deleteSession(sessionInfo.id);
+          if (managers.rlmContextManager) {
+            await managers.rlmContextManager.deleteSession(sessionInfo.id);
+          }
         } catch (err) {
           log("[event] RLM context manager cleanup error:", { sessionID: sessionInfo.id, error: err });
         }

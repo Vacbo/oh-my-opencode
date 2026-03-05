@@ -6,7 +6,7 @@ import type {
   RlmManifestVariable,
   RlmSessionState,
 } from "../../features/rlm-context/types"
-import type { RlmContextManagerForPlan } from "./tools"
+import type { RlmContextManagerForPlan } from "./plan-tool"
 
 export class InMemoryRlmManager implements RlmContextManagerForPlan {
   private readonly sessions = new Map<string, RlmSessionState>()

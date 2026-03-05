@@ -1,5 +1,5 @@
 import type { RlmBlobVariable, RlmSessionState } from "../../features/rlm-context/types"
-import type { RlmContextManagerForPlan } from "./tools"
+import type { RlmContextManagerForPlan } from "./plan-tool"
 import type { SyncSubcallResult } from "./subcall-runner"
 
 export function fillTemplate(template: string, query: string, item: string): string {

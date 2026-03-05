@@ -1,5 +1,5 @@
 import { describe, expect, it, mock } from "bun:test"
-import { createRlmPlanTool } from "./tools"
+import { createRlmPlanTool } from "./plan-tool"
 import {
   InMemoryRlmManager,
   createSession,
@@ -129,11 +129,11 @@ describe("createRlmPlanTool", () => {
         { op: "write_var", variable_name: "never", content: "nope" },
       ],
     }, createToolContext("ses-root"))
-    const parsed = JSON.parse(raw) as { terminal: boolean; halted: boolean; final_variable: string; executed_ops: number }
+    const parsed = JSON.parse(raw) as { terminal: boolean; halted: boolean; result_variable: string; executed_ops: number }
 
     expect(parsed.terminal).toBe(false)
     expect(parsed.halted).toBe(true)
-    expect(parsed.final_variable).toBe("first")
+    expect(parsed.result_variable).toBe("first")
     expect(parsed.executed_ops).toBe(2)
     expect(manager.getVariableByName("ses-root", "never")).toBeUndefined()
   })

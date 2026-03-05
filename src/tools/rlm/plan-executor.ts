@@ -1,6 +1,6 @@
 import type { ToolContext } from "@opencode-ai/plugin/tool"
 import type { RlmPlanInput } from "./types"
-import type { RlmContextManagerForPlan, RlmPlanToolOptions } from "./tools"
+import type { RlmContextManagerForPlan, RlmPlanToolOptions } from "./plan-tool"
 import {
   executeConcatOperation,
   executeSelectOperation,
@@ -63,14 +63,16 @@ export async function executeRlmPlan(
         opResults.push({ op: operation.op, ...(await executeWriteVarOperation(contextManager, context, operation)) })
         continue
       }
-
-      return toPlanResult({
-        terminal: false,
-        halted: true,
-        final_variable: operation.variable_name,
-        executed_ops: opIndex + 1,
-        operation_results: opResults,
-      })
+      if (operation.op === "final_var") {
+        return toPlanResult({
+          terminal: false,
+          halted: true,
+          result_variable: operation.variable_name,
+          final_variable: operation.variable_name,
+          executed_ops: opIndex + 1,
+          operation_results: opResults,
+        })
+      }
     } catch (error) {
       return toPlanResult({
         error: "plan_execution_error",

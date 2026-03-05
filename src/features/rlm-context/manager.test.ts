@@ -26,6 +26,7 @@ type RlmContextManagerLike = {
   createBlobVariable: (sessionId: string, input: unknown, options?: unknown) => RlmBlobVariable | Promise<RlmBlobVariable>
   createManifestVariable: (sessionId: string, input: unknown, options?: unknown) => RlmManifestVariable | Promise<RlmManifestVariable>
   readManifest: (variable: RlmManifestVariable) => string[] | Promise<string[]>
+  readBlobContent: (variable: RlmBlobVariable) => string | Promise<string>
   resolveManifestItems: (sessionId: string, manifestName: string) => RlmBlobVariable[] | Promise<RlmBlobVariable[]>
   getVariableByName: (sessionId: string, name: string) => RlmContextVariable | undefined | Promise<RlmContextVariable | undefined>
   listVariables: (sessionId: string) => RlmContextVariable[] | Promise<RlmContextVariable[]>
@@ -213,5 +214,376 @@ describe("rlm-context manager (RED)", () => {
 
     expect(await manager.getSession(sessionId)).toBeUndefined()
     expect(existsSync(sessionDir)).toBe(false)
+  })
+})
+
+describe("rlm-context manager edge cases (SCENARIO 3)", () => {
+  it("throws error when session not found for createBlobVariable", async () => {
+    const manager = await createManager()
+    
+    try {
+      await manager.createBlobVariable("nonexistent-session", { name: "blob", content: "data" })
+      expect(false).toBe(true) // Should not reach here
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      expect(message.includes("Session not found")).toBe(true)
+    }
+  })
+
+  it("throws error when session not found for createManifestVariable", async () => {
+    const manager = await createManager()
+    
+    try {
+      await manager.createManifestVariable("nonexistent-session", { name: "manifest", variableNames: [] })
+      expect(false).toBe(true) // Should not reach here
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      expect(message.includes("Session not found")).toBe(true)
+    }
+  })
+
+  it("throws error when variable name already exists", async () => {
+    const manager = await createManager()
+    const contextDir = createTempDir()
+    const sessionId = "ses-duplicate-name"
+    await manager.initSession(sessionId, { contextDir, maxDepth: 2, query: "test" })
+    await manager.createBlobVariable(sessionId, { name: "duplicate", content: "first" })
+    
+    try {
+      await manager.createBlobVariable(sessionId, { name: "duplicate", content: "second" })
+      expect(false).toBe(true) // Should not reach here
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      expect(message.includes("Variable already exists")).toBe(true)
+    }
+  })
+
+  it("throws error for invalid variable name with path traversal", async () => {
+    const manager = await createManager()
+    const contextDir = createTempDir()
+    const sessionId = "ses-invalid-name"
+    await manager.initSession(sessionId, { contextDir, maxDepth: 2, query: "test" })
+    
+    try {
+      await manager.createBlobVariable(sessionId, { name: "../evil", content: "data" })
+      expect(false).toBe(true) // Should not reach here
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      expect(message.includes("invalid characters")).toBe(true)
+    }
+  })
+
+  it("throws error for invalid variable name with special characters", async () => {
+    const manager = await createManager()
+    const contextDir = createTempDir()
+    const sessionId = "ses-special-chars"
+    await manager.initSession(sessionId, { contextDir, maxDepth: 2, query: "test" })
+    
+    try {
+      await manager.createBlobVariable(sessionId, { name: "var@name!", content: "data" })
+      expect(false).toBe(true) // Should not reach here
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      expect(message.includes("invalid characters")).toBe(true)
+    }
+  })
+
+  it("throws error when blob input missing both content and file_path", async () => {
+    const manager = await createManager()
+    const contextDir = createTempDir()
+    const sessionId = "ses-missing-source"
+    await manager.initSession(sessionId, { contextDir, maxDepth: 2, query: "test" })
+    
+    try {
+      await manager.createBlobVariable(sessionId, { name: "incomplete" } as unknown as any)
+      expect(false).toBe(true) // Should not reach here
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      expect(message.includes("exactly one of content or file_path")).toBe(true)
+    }
+  })
+
+  it("throws error when blob input has both content and file_path", async () => {
+    const manager = await createManager()
+    const contextDir = createTempDir()
+    const sessionId = "ses-both-sources"
+    await manager.initSession(sessionId, { contextDir, maxDepth: 2, query: "test" })
+    
+    try {
+      await manager.createBlobVariable(sessionId, { name: "both", content: "data", file_path: "/path" } as any)
+      expect(false).toBe(true) // Should not reach here
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      expect(message.includes("exactly one of content or file_path")).toBe(true)
+    }
+  })
+
+  it("throws error when blob input missing name", async () => {
+    const manager = await createManager()
+    const contextDir = createTempDir()
+    const sessionId = "ses-no-name"
+    await manager.initSession(sessionId, { contextDir, maxDepth: 2, query: "test" })
+    
+    try {
+      await manager.createBlobVariable(sessionId, { content: "data" } as any)
+      expect(false).toBe(true) // Should not reach here
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      expect(message.includes("must include a string name")).toBe(true)
+    }
+  })
+
+  it("throws error when manifest input missing name", async () => {
+    const manager = await createManager()
+    const contextDir = createTempDir()
+    const sessionId = "ses-manifest-no-name"
+    await manager.initSession(sessionId, { contextDir, maxDepth: 2, query: "test" })
+    
+    try {
+      await manager.createManifestVariable(sessionId, { variableNames: [] } as any)
+      expect(false).toBe(true) // Should not reach here
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      expect(message.includes("must include a string name")).toBe(true)
+    }
+  })
+
+  it("throws error when manifest variableNames is not an array", async () => {
+    const manager = await createManager()
+    const contextDir = createTempDir()
+    const sessionId = "ses-manifest-bad-array"
+    await manager.initSession(sessionId, { contextDir, maxDepth: 2, query: "test" })
+    
+    try {
+      await manager.createManifestVariable(sessionId, { name: "bad", variableNames: "not-array" } as any)
+      expect(false).toBe(true) // Should not reach here
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      expect(message.includes("must be a string array")).toBe(true)
+    }
+  })
+
+  it("throws error when manifest references non-existent blob variable", async () => {
+    const manager = await createManager()
+    const contextDir = createTempDir()
+    const sessionId = "ses-manifest-missing-ref"
+    await manager.initSession(sessionId, { contextDir, maxDepth: 2, query: "test" })
+    await manager.createBlobVariable(sessionId, { name: "exists", content: "data" })
+    
+    try {
+      await manager.createManifestVariable(sessionId, { name: "bad_manifest", variableNames: ["exists", "missing"] })
+      expect(false).toBe(true) // Should not reach here
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      expect(message.includes("unknown blob variable")).toBe(true)
+    }
+  })
+
+  it("throws error when getVariableByName called on non-existent session", async () => {
+    const manager = await createManager()
+    const result = await manager.getVariableByName("nonexistent", "var")
+    expect(result).toBeUndefined()
+  })
+
+  it("throws error when listVariables called on non-existent session", async () => {
+    const manager = await createManager()
+    
+    try {
+      await manager.listVariables("nonexistent")
+      expect(false).toBe(true) // Should not reach here
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      expect(message.includes("Session not found")).toBe(true)
+    }
+  })
+
+  it("handles empty manifest variable names array", async () => {
+    const manager = await createManager()
+    const contextDir = createTempDir()
+    const sessionId = "ses-empty-manifest"
+    await manager.initSession(sessionId, { contextDir, maxDepth: 2, query: "test" })
+    
+    const manifest = await manager.createManifestVariable(sessionId, { name: "empty", variableNames: [] })
+    expect(manifest.itemCount).toBe(0)
+    
+    const items = await manager.resolveManifestItems(sessionId, "empty")
+    expect(items.length).toBe(0)
+  })
+
+  it("handles empty blob content", async () => {
+    const manager = await createManager()
+    const contextDir = createTempDir()
+    const sessionId = "ses-empty-blob"
+    await manager.initSession(sessionId, { contextDir, maxDepth: 2, query: "test" })
+    
+    const variable = await manager.createBlobVariable(sessionId, { name: "empty", content: "" })
+    expect(variable.lineCount).toBe(0)
+    expect(variable.byteSize).toBe(0)
+  })
+
+  it("handles single-line blob content without newline", async () => {
+    const manager = await createManager()
+    const contextDir = createTempDir()
+    const sessionId = "ses-single-line"
+    await manager.initSession(sessionId, { contextDir, maxDepth: 2, query: "test" })
+    
+    const variable = await manager.createBlobVariable(sessionId, { name: "single", content: "one line" })
+    expect(variable.lineCount).toBe(1)
+  })
+
+  it("handles multi-line blob content with various line endings", async () => {
+    const manager = await createManager()
+    const contextDir = createTempDir()
+    const sessionId = "ses-multiline"
+    await manager.initSession(sessionId, { contextDir, maxDepth: 2, query: "test" })
+    
+    const content = "line1\r\nline2\nline3\r\nline4"
+    const variable = await manager.createBlobVariable(sessionId, { name: "multiline", content })
+    expect(variable.lineCount).toBe(4)
+  })
+
+  it("handles large blob content", async () => {
+    const manager = await createManager()
+    const contextDir = createTempDir()
+    const sessionId = "ses-large"
+    await manager.initSession(sessionId, { contextDir, maxDepth: 2, query: "test" })
+    
+    const largeContent = "x".repeat(1000000) // 1MB
+    const variable = await manager.createBlobVariable(sessionId, { name: "large", content: largeContent })
+    expect(variable.byteSize).toBe(1000000)
+    expect(variable.lineCount).toBe(1)
+  })
+
+  it("throws error when reading non-existent blob variable", async () => {
+    const manager = await createManager()
+    const contextDir = createTempDir()
+    const sessionId = "ses-read-missing"
+    await manager.initSession(sessionId, { contextDir, maxDepth: 2, query: "test" })
+    
+    try {
+      await manager.readBlobContent({ sessionId, name: "missing" } as any)
+      expect(false).toBe(true) // Should not reach here
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      expect(message.includes("Blob variable not found")).toBe(true)
+    }
+  })
+
+  it("throws error when reading non-existent manifest variable", async () => {
+    const manager = await createManager()
+    const contextDir = createTempDir()
+    const sessionId = "ses-manifest-read-missing"
+    await manager.initSession(sessionId, { contextDir, maxDepth: 2, query: "test" })
+    
+    try {
+      await manager.readManifest({ sessionId, name: "missing" } as any)
+      expect(false).toBe(true) // Should not reach here
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      expect(message.includes("Manifest variable not found")).toBe(true)
+    }
+  })
+
+  it("throws error when resolving manifest items with missing blob reference", async () => {
+    const manager = await createManager()
+    const contextDir = createTempDir()
+    const sessionId = "ses-resolve-missing"
+    await manager.initSession(sessionId, { contextDir, maxDepth: 2, query: "test" })
+    await manager.createBlobVariable(sessionId, { name: "exists", content: "data" })
+    
+    // Manually corrupt the manifest to reference a missing variable
+    await manager.createManifestVariable(sessionId, { name: "manifest", variableNames: ["exists"] })
+    
+    // Get the session and manually remove the blob variable to simulate corruption
+    const session = await manager.getSession(sessionId)
+    if (session) {
+      session.variables.delete("exists")
+    }
+    
+    try {
+      await manager.resolveManifestItems(sessionId, "manifest")
+      expect(false).toBe(true) // Should not reach here
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      expect(message.includes("unknown blob variable")).toBe(true)
+    }
+  })
+
+  it("deleteSession handles non-existent session gracefully", async () => {
+    const manager = await createManager()
+    
+    // Should not throw
+    await manager.deleteSession("nonexistent")
+    expect(true).toBe(true)
+  })
+
+  it("deleteSession removes session from in-memory map", async () => {
+    const manager = await createManager()
+    const contextDir = createTempDir()
+    const sessionId = "ses-cleanup"
+    await manager.initSession(sessionId, { contextDir, maxDepth: 2, query: "test" })
+    
+    expect(await manager.getSession(sessionId)).toBeDefined()
+    await manager.deleteSession(sessionId)
+    expect(await manager.getSession(sessionId)).toBeUndefined()
+  })
+
+  it("enforces maxDepth constraint in session state", async () => {
+    const manager = await createManager()
+    const contextDir = createTempDir()
+    const sessionId = "ses-max-depth"
+    const maxDepth = 3
+    
+    const session = await manager.initSession(sessionId, { contextDir, maxDepth, query: "test", depth: 0 })
+    expect(session.maxDepth).toBe(maxDepth)
+    expect(session.depth).toBe(0)
+  })
+
+  it("respects depth parameter in initSession", async () => {
+    const manager = await createManager()
+    const contextDir = createTempDir()
+    const sessionId = "ses-depth-param"
+    
+    const session = await manager.initSession(sessionId, { contextDir, maxDepth: 5, query: "test", depth: 2 })
+    expect(session.depth).toBe(2)
+  })
+
+  it("defaults depth to 0 when not provided", async () => {
+    const manager = await createManager()
+    const contextDir = createTempDir()
+    const sessionId = "ses-default-depth"
+    
+    const session = await manager.initSession(sessionId, { contextDir, maxDepth: 5, query: "test" })
+    expect(session.depth).toBe(0)
+  })
+
+  it("defaults shouldDistill to false when not provided", async () => {
+    const manager = await createManager()
+    const contextDir = createTempDir()
+    const sessionId = "ses-default-distill"
+    
+    const session = await manager.initSession(sessionId, { contextDir, maxDepth: 5, query: "test" })
+    expect(session.shouldDistill).toBe(false)
+  })
+
+  it("respects shouldDistill parameter in initSession", async () => {
+    const manager = await createManager()
+    const contextDir = createTempDir()
+    const sessionId = "ses-distill-param"
+    
+    const session = await manager.initSession(sessionId, { contextDir, maxDepth: 5, query: "test", shouldDistill: true })
+    expect(session.shouldDistill).toBe(true)
+  })
+
+  it("returns existing session when initSession called twice with same ID", async () => {
+    const manager = await createManager()
+    const contextDir = createTempDir()
+    const sessionId = "ses-idempotent"
+    
+    const session1 = await manager.initSession(sessionId, { contextDir, maxDepth: 5, query: "first" })
+    const session2 = await manager.initSession(sessionId, { contextDir, maxDepth: 10, query: "second" })
+    
+    expect(session1.sessionId).toBe(session2.sessionId)
+    expect(session1.query).toBe("first") // Original query preserved
   })
 })

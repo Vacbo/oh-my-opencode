@@ -1,0 +1,382 @@
+# src/tools/rlm/ — RLM Public Tools and Internals
+
+**Generated:** 2026-03-05
+
+## OVERVIEW
+
+Four public RLM tools (`rlm_probe`, `rlm_search`, `rlm_plan`, `rlm_finish`) plus internal helpers for session initialization, system prompt building, and recursive child execution. The tools expose a REPL-first mental model where context is symbolic and interaction is bounded.
+
+## FILE STRUCTURE
+
+| File | Purpose |
+|------|---------|
+| `types.ts` | Zod schemas for all tool inputs and internal helpers |
+| `init-session.ts` | `initRlmSession()` helper: pre-turn session setup with context offload |
+| `system-prompt.ts` | `buildRlmSystemPrompt()`: REPL-first prompt builder |
+| `parser.ts` | `parseFinalAnswer()`: compatibility parser for `FINAL()` / `FINAL_VAR()` |
+| `probe-tool.ts` | `createRlmProbeTool()`: bounded inspection operations |
+| `search-tool.ts` | `createRlmSearchTool()`: regex/literal search on blobs |
+| `finish-tool.ts` | `createRlmFinishTool()`: session-terminal tool |
+| `plan-executor.ts` | `executeRlmPlan()`: orchestrates 8-op plan execution |
+| `plan-basic-ops.ts` | `split`, `select`, `concat`, `write_var` operations |
+| `plan-subcall-ops.ts` | `map_llm`, `map_rlm`, `reduce_llm` with child session handling |
+| `subcall-runner.ts` | Sync sub-call execution for child RLM/LM sessions |
+| `plan-utils.ts` | Helpers: session lookup, template expansion, error formatting |
+| `tools.ts` | Factory functions: `createRlmProbeTool()`, `createRlmSearchTool()`, etc. |
+| `index.ts` | Barrel export: all factories and helpers |
+
+## PUBLIC TOOLS
+
+### 1. `rlm_probe` — Bounded Inspection
+
+**Factory:** `createRlmProbeTool(contextManager, options)`
+
+**Operations (discriminated union):**
+
+| Operation | Parameters | Returns |
+|-----------|-----------|---------|
+| `head` | `variable_name`, `lines?` | First N lines of blob |
+| `tail` | `variable_name`, `lines?` | Last N lines of blob |
+| `slice` | `variable_name`, `start`, `end` | Lines M to N of blob |
+| `stats` | `variable_name` | Metadata (size, line count) for blob or manifest |
+| `schema` | `variable_name` | Best-effort structure detection for blob |
+| `list_vars` | (none) | All variables in session with metadata |
+
+**Behavior:**
+- Content-returning operations bounded by `probe_max_lines` config (default 200)
+- `list_vars` returns metadata only, no content
+- Manifest `stats` returns item count and total size
+- All responses are JSON
+
+**Example:**
+```json
+{
+  "operation": "head",
+  "variable_name": "context",
+  "lines": 50
+}
+```
+
+### 2. `rlm_search` — Regex/Keyword Search
+
+**Factory:** `createRlmSearchTool(contextManager, options)`
+
+**Input:**
+```typescript
+{
+  variable_name: string
+  pattern: string
+  mode: 'literal' | 'regex'  // default: 'literal'
+  max_results?: number
+}
+```
+
+**Behavior:**
+- Searches blob variables only; manifest search returns explicit error JSON
+- Literal mode: substring search
+- Regex mode: line-by-line matching with safety guards (timeout, backtracking limits)
+- Returns bounded match results with line numbers and surrounding context
+- Regex timeout/guard failure returns error JSON
+
+**Example:**
+```json
+{
+  "variable_name": "context",
+  "pattern": "function.*async",
+  "mode": "regex",
+  "max_results": 10
+}
+```
+
+### 3. `rlm_plan` — Manifest-Aware Plan Executor
+
+**Factory:** `createRlmPlanTool(contextManager, options)`
+
+**Input:**
+```typescript
+{
+  operations: Array<
+    | { op: 'split', variable_name, chunk_size, output_variable }
+    | { op: 'select', variable_name, indices?, filter?, output_variable }
+    | { op: 'map_llm', variable_name, prompt, output_variable }
+    | { op: 'map_rlm', variable_name, prompt, output_variable }
+    | { op: 'concat', variable_name, output_variable }
+    | { op: 'reduce_llm', variable_name, prompt, output_variable }
+    | { op: 'write_var', variable_name, output_variable }
+    | { op: 'final_var', variable_name }
+  >
+}
+```
+
+**Operations:**
+
+| Op | Input | Output | Semantics |
+|----|-------|--------|-----------|
+| `split` | blob | manifest | Chunk blob into N-line pieces, create manifest |
+| `select` | manifest | manifest | Filter/reorder manifest items by indices or filter expression |
+| `map_llm` | manifest | manifest | Apply LM prompt to each blob item, collect results |
+| `map_rlm` | manifest | manifest | Apply RLM session to each blob item (or downgrade to `map_llm` if depth limit reached) |
+| `concat` | manifest | blob | Join all manifest items into single blob |
+| `reduce_llm` | manifest | blob | Apply LM reduction prompt to manifest, return single blob |
+| `write_var` | literal | blob | Write literal string to new blob variable |
+| `final_var` | variable_name | — | Plan-local halt; return variable name (not terminal) |
+
+**Execution Rules:**
+- Sequential only (no parallel map in Phase 1)
+- Max 50 operations per plan
+- `{{query}}` expands from persisted `session.query`
+- `{{item}}` expands from current blob item content (in map operations)
+- Stops on first error or `final_var`
+
+**Return Shape:**
+```json
+{
+  "terminal": false,
+  "halted": false,
+  "executed_ops": 8,
+  "operation_results": [...]
+}
+```
+
+Or on `final_var`:
+```json
+{
+  "terminal": false,
+  "halted": true,
+  "final_variable": "result",
+  "executed_ops": 5,
+  "operation_results": [...]
+}
+```
+
+**Depth Semantics:**
+- `map_rlm` checks if `session.depth + 1 >= session.maxDepth`
+- If true: downgrades to `map_llm` (plain LM sub-call)
+- If false: creates child RLM session with `initRlmSession()` before child's first model turn
+
+**Child Session Lifecycle:**
+1. Create child session ID
+2. Call `initRlmSession()` with child query + item content
+3. Build child system prompt from metadata only
+4. Launch child RLM session
+5. Extract result from child's `rlm_finish` or `FINAL()/FINAL_VAR()` parse
+6. Clean up: delete child session, remove from session tracking
+
+### 4. `rlm_finish` — Session-Terminal Tool
+
+**Factory:** `createRlmFinishTool(contextManager)`
+
+**Input (XOR):**
+```typescript
+{
+  variable_name?: string  // Load blob content
+  value?: string          // Literal string
+}
+```
+
+**Behavior:**
+- Exactly one of `variable_name` or `value` required
+- If `variable_name`: loads blob content, rejects manifest
+- If `value`: returns literal string
+- Returns JSON with `terminal: true` flag
+
+**Return Shape:**
+```json
+{
+  "final_answer": "...",
+  "source": "variable|literal",
+  "terminal": true
+}
+```
+
+**Semantics:**
+- Only `rlm_finish` sets `terminal: true`
+- `final_var` in plan returns `terminal: false`
+- Bypasses truncation and distillation hooks
+
+## INTERNAL HELPERS
+
+### `initRlmSession(contextManager, input)`
+
+**Purpose:** Pre-turn session initialization. Called by `/rlm` command and recursive child setup.
+
+**Input:**
+```typescript
+{
+  sessionId: string
+  query: string
+  content?: string          // XOR with file_path
+  file_path?: string        // XOR with content
+  depth?: number            // default: 0
+  parentSessionId?: string
+  maxDepth: number
+  contextDir: string
+  shouldDistill?: boolean   // default: false
+}
+```
+
+**Behavior:**
+- Validates XOR: exactly one of `content` or `file_path`
+- Requires `query`
+- Initializes session if absent
+- Creates root `context` blob variable before any model turn
+- Returns metadata-only result (no raw content)
+
+**Return Shape:**
+```typescript
+{
+  sessionId: string
+  depth: number
+  maxDepth: number
+  query: string
+  shouldDistill: boolean
+  parentSessionId?: string
+  contextMetadata: {
+    contextVariableName: string
+    contextSize: number
+    contextType: string
+    lineCount: number
+  }
+}
+```
+
+### `buildRlmSystemPrompt(options)`
+
+**Purpose:** REPL-first system prompt builder.
+
+**Input:**
+```typescript
+{
+  depth: number
+  maxDepth: number
+  contextMetadata?: {
+    contextVariableName?: string
+    contextSize?: number
+    contextType?: string
+  }
+  mode: 'canonical' | 'keyword-alias'
+}
+```
+
+**Behavior:**
+- `canonical` mode: Full REPL mental model + tool mapping
+- `keyword-alias` mode: Lightweight prompt for already-present context
+- Explains `context`, `llm_query`, `print()`, truncated outputs, `FINAL/FINAL_VAR`
+- Maps to OMO tools: `rlm_probe`, `rlm_search`, `rlm_plan`, `rlm_finish`
+- Explicitly distinguishes `final_var` (plan-local) from `rlm_finish` (terminal)
+- Includes depth and recursion downgrade semantics
+
+### `parseFinalAnswer(text)`
+
+**Purpose:** Compatibility parser for paper-style child outputs.
+
+**Input:** Raw child model output text
+
+**Return:**
+```typescript
+{
+  type: 'final'
+  content: string
+} | {
+  type: 'final_var'
+  variableName: string
+} | null
+```
+
+**Behavior:**
+- Checks `FINAL_VAR(...)` before `FINAL(...)`
+- Start-of-line enforcement
+- Greedy multiline capture for `FINAL(...)`
+- Empty `FINAL()` allowed
+- Returns `null` if neither pattern found
+
+**Used by:** `map_rlm` and `reduce_llm` for child result extraction
+
+## PLAN-OP SEMANTICS
+
+### `final_var` vs `rlm_finish`
+
+| Aspect | `final_var` | `rlm_finish` |
+|--------|-----------|------------|
+| Scope | Plan-local | Session-terminal |
+| Return `terminal` | `false` | `true` |
+| Halts | Current plan | Entire session |
+| Can be followed by | Nothing (plan stops) | Nothing (session ends) |
+| Used in | `rlm_plan` operations | Direct tool call |
+
+**Example:**
+```json
+{
+  "operations": [
+    { "op": "split", "variable_name": "context", "chunk_size": 100, "output_variable": "chunks" },
+    { "op": "map_llm", "variable_name": "chunks", "prompt": "summarize", "output_variable": "summaries" },
+    { "op": "final_var", "variable_name": "summaries" }
+  ]
+}
+```
+
+Returns:
+```json
+{
+  "terminal": false,
+  "halted": true,
+  "final_variable": "summaries",
+  "executed_ops": 3,
+  "operation_results": [...]
+}
+```
+
+Then the model calls `rlm_finish` with the summary variable to actually end the session.
+
+### Depth Semantics
+
+**Root session (depth=0, maxDepth=1):**
+- `map_rlm` downgrades to `map_llm` (no recursion allowed)
+
+**Root session (depth=0, maxDepth=2):**
+- `map_rlm` creates child sessions at depth=1
+- Child's `map_rlm` downgrades to `map_llm` (depth 1 + 1 >= maxDepth 2)
+
+**Downgrade behavior:**
+- Automatic, no error
+- Child receives plain LM prompt instead of RLM system prompt
+- Result extraction uses `FINAL()/FINAL_VAR()` parser only
+
+## TERMINAL BOUNDARY
+
+### What Ends a Session
+
+Only `rlm_finish` with `terminal: true` ends the session.
+
+### What Does NOT End a Session
+
+- `final_var` in plan (returns `terminal: false`)
+- Any other tool output
+- Model reaching max tokens
+
+### Truncation and Distillation Bypass
+
+`rlm_finish` output bypasses:
+- `tool-output-truncator` hook
+- RLM output distiller hook
+
+This ensures the final answer is never truncated.
+
+## INTEGRATION POINTS
+
+- **`/rlm` command**: Calls `initRlmSession()` before first model turn
+- **Keyword detector**: Injects `buildRlmSystemPrompt()` with `mode: 'keyword-alias'`
+- **Session cleanup**: Calls `contextManager.deleteSession()` on `session.deleted` event
+- **Plan child execution**: Uses `initRlmSession()` and `buildRlmSystemPrompt()` for child setup
+- **Tool registry**: All four public tools registered in `src/plugin/tool-registry.ts`
+
+## TESTING
+
+Tests cover:
+- Probe operations: head, tail, slice, stats, schema, list_vars
+- Search: literal and regex modes, bounded results, manifest rejection
+- Plan: all 8 operations, manifest order preservation, depth downgrade
+- Finish: variable and literal paths, XOR validation, manifest rejection
+- Init helper: session creation, context blob creation, metadata return
+- System prompt: REPL-first framing, depth/recursion notes, tool mapping
+- Parser: `FINAL()` and `FINAL_VAR()` precedence, multiline capture

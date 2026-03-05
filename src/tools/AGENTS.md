@@ -1,10 +1,10 @@
-# src/tools/ — 26 Tools Across 15 Directories
+# src/tools/ — 30 Tools Across 19 Directories
 
-**Generated:** 2026-02-24
+**Generated:** 2026-03-05
 
 ## OVERVIEW
 
-26 tools registered via `createToolRegistry()`. Two patterns: factory functions (`createXXXTool`) for 19 tools, direct `ToolDefinition` for 7 (LSP + interactive_bash).
+30 tools registered via `createToolRegistry()`. Two patterns: factory functions (`createXXXTool`) for 23 tools, direct `ToolDefinition` for 7 (LSP + interactive_bash).
 
 ## TOOL CATALOG
 
@@ -37,6 +37,21 @@
 |------|---------|------------|
 | `background_output` | `createBackgroundOutput` | task_id, block, timeout, full_session, include_thinking, message_limit |
 | `background_cancel` | `createBackgroundCancel` | taskId, all |
+
+### RLM (Recursive Language Model) (4)
+
+| Tool | Factory | Parameters |
+|------|---------|------------|
+| `rlm_probe` | `createRlmProbeTool` | operation (head/tail/slice/stats/schema/list_vars), variable_name, lines?, start?, end? |
+| `rlm_search` | `createRlmSearchTool` | variable_name, pattern, mode (literal/regex), max_results? |
+| `rlm_plan` | `createRlmPlanTool` | operations[] (split/select/map_llm/map_rlm/concat/reduce_llm/write_var/final_var) |
+| `rlm_finish` | `createRlmFinishTool` | variable_name? OR value? (XOR) |
+
+**RLM Semantics:**
+- `rlm_probe`: Bounded inspection of blob/manifest variables
+- `rlm_search`: Regex/literal search on blob variables only
+- `rlm_plan`: 8-operation manifest-aware executor with recursive child support
+- `rlm_finish`: Session-terminal tool (only tool that sets `terminal: true`)
 
 ### LSP Refactoring (6) — Direct ToolDefinition
 
