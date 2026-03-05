@@ -62,3 +62,10 @@ export const builtinTools: Record<string, ToolDefinition> = {
   lsp_prepare_rename,
   lsp_rename,
 }
+
+export {
+  createRlmProbeTool,
+  createRlmSearchTool,
+  createRlmPlanTool,
+  createRlmFinishTool,
+} from "./rlm"

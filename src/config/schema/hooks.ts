@@ -7,6 +7,7 @@ export const HookNameSchema = z.enum([
   "session-notification",
   "comment-checker",
   "tool-output-truncator",
+  "rlm-output-distiller",
   "question-label-truncator",
   "directory-agents-injector",
   "directory-readme-injector",

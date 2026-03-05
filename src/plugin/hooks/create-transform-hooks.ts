@@ -11,6 +11,8 @@ import {
   createContextInjectorMessagesTransformHook,
 } from "../../features/context-injector"
 import { safeCreateHook } from "../../shared/safe-create-hook"
+import { registerDynamicKeywordDetector } from "../../hooks/keyword-detector/dynamic-detectors"
+import { RLM_ALIAS_PATTERN, getRlmAliasMessage } from "../../hooks/keyword-detector/rlm-alias"
 
 export type TransformHooks = {
   claudeCodeHooks: ReturnType<typeof createClaudeCodeHooksHook> | null
@@ -43,6 +45,15 @@ export function createTransformHooks(args: {
         { enabled: safeHookEnabled },
       )
     : null
+
+  const rlmEnabled = pluginConfig.experimental?.rlm?.enabled ?? false
+  if (rlmEnabled && isHookEnabled("keyword-detector")) {
+    registerDynamicKeywordDetector({
+      type: "rlm",
+      pattern: RLM_ALIAS_PATTERN,
+      message: getRlmAliasMessage,
+    })
+  }
 
   const keywordDetector = isHookEnabled("keyword-detector")
     ? safeCreateHook(

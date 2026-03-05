@@ -1,6 +1,17 @@
 import { z } from "zod"
 import { DynamicContextPruningConfigSchema } from "./dynamic-context-pruning"
 
+export const RlmConfigSchema = z.object({
+  enabled: z.boolean().default(false),
+  max_depth: z.number().int().min(1).max(5).default(1),
+  context_storage_dir: z.string().default(".sisyphus/rlm-contexts"),
+  distill_threshold_tokens: z.number().int().min(100).default(2000),
+  subcall_model: z.string().optional(),
+  probe_max_lines: z.number().int().min(10).default(200),
+})
+
+export type RlmConfig = z.infer<typeof RlmConfigSchema>
+
 export const ExperimentalConfigSchema = z.object({
   aggressive_truncation: z.boolean().optional(),
   auto_resume: z.boolean().optional(),
@@ -21,6 +32,8 @@ export const ExperimentalConfigSchema = z.object({
   hashline_edit: z.boolean().optional(),
   /** Append fallback model info to session title when a runtime fallback occurs (default: false) */
   model_fallback_title: z.boolean().optional(),
+  /** RLM (Recursive Language Model) configuration */
+  rlm: RlmConfigSchema.optional(),
 })
 
 export type ExperimentalConfig = z.infer<typeof ExperimentalConfigSchema>

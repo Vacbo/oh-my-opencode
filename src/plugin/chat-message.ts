@@ -6,6 +6,9 @@ import { setSessionModel } from "../shared/session-model-state"
 import { setSessionAgent } from "../features/claude-code-session-state"
 import { applyUltraworkModelOverrideOnMessage } from "./ultrawork-model-override"
 import { parseRalphLoopArguments } from "../hooks/ralph-loop/command-arguments"
+import { RLM_COMMAND_MARKER } from "../features/builtin-commands/rlm/template"
+import { createRlmCommandPreprocessor } from "../features/builtin-commands/rlm/command-preprocessor"
+import { log } from "../shared"
 
 import type { CreatedHooks } from "../create-hooks"
 
@@ -45,6 +48,12 @@ export function createChatMessageHandler(args: {
   output: ChatMessageHandlerOutput
 ) => Promise<void> {
   const { ctx, pluginConfig, firstMessageVariantGate, hooks } = args
+
+  const rlmConfig = pluginConfig.experimental?.rlm
+  const rlmEnabled = rlmConfig?.enabled ?? false
+  const rlmPreprocessor = rlmEnabled
+    ? createRlmCommandPreprocessor(rlmConfig, ctx.directory ?? ".")
+    : null
   const pluginContext = ctx as {
     client: {
       tui: {
@@ -99,6 +108,21 @@ export function createChatMessageHandler(args: {
     await hooks.stopContinuationGuard?.["chat.message"]?.(input)
     await hooks.backgroundNotificationHook?.["chat.message"]?.(input, output)
     await hooks.runtimeFallback?.["chat.message"]?.(input, output)
+
+    if (rlmPreprocessor) {
+      const promptText = output.parts
+        ?.filter((p) => p.type === "text" && p.text)
+        .map((p) => p.text)
+        .join("\n") || ""
+      if (promptText.includes(RLM_COMMAND_MARKER)) {
+        try {
+          await rlmPreprocessor(input, output)
+        } catch (err) {
+          log("[rlm-command] Preprocessor failed", { error: err, sessionID: input.sessionID })
+        }
+      }
+    }
+
     await hooks.keywordDetector?.["chat.message"]?.(input, output)
     await hooks.thinkMode?.["chat.message"]?.(input, output)
     await hooks.claudeCodeHooks?.["chat.message"]?.(input, output)

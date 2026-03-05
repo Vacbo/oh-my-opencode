@@ -1,0 +1,140 @@
+import { describe, expect, it, mock } from "bun:test"
+import { createRlmPlanTool } from "./tools"
+import {
+  InMemoryRlmManager,
+  createSession,
+  createToolContext,
+  dummyClient,
+} from "./plan-tool.test-helpers"
+
+describe("createRlmPlanTool", () => {
+  it("split and select produce manifest variables referencing real blob vars", async () => {
+    const manager = new InMemoryRlmManager()
+    manager.seedSession(createSession("ses-root", "query", 0, 3))
+    manager.createBlobVariable("ses-root", { name: "context", content: "aaabbbccc" })
+
+    const tool = createRlmPlanTool(manager, { client: dummyClient, directory: "/tmp" })
+    const raw = await tool.execute({
+      operations: [
+        { op: "split", variable_name: "context", chunk_size: 3, output_variable: "chunks" },
+        { op: "select", variable_name: "chunks", indices: [2, 0], output_variable: "picked" },
+      ],
+    }, createToolContext("ses-root"))
+
+    expect(JSON.parse(raw).error).toBeUndefined()
+    const picked = manager.resolveManifestItems("ses-root", "picked")
+    expect(picked.map((blob) => blob.name)).toEqual(["chunks_2", "chunks_0"])
+    expect(picked.map((blob) => manager.readBlobContent(blob))).toEqual(["ccc", "aaa"])
+  })
+
+  it("map_rlm downgrades to map_llm at depth limit and expands {{query}}/{{item}}", async () => {
+    const manager = new InMemoryRlmManager()
+    manager.seedSession(createSession("ses-root", "Persisted query", 1, 2))
+    manager.createBlobVariable("ses-root", { name: "a", content: "one" })
+    manager.createBlobVariable("ses-root", { name: "b", content: "two" })
+    manager.createManifestVariable("ses-root", { name: "chunks", variableNames: ["a", "b"] })
+
+    const prompts: string[] = []
+    const initSpy = mock(async () => {
+      throw new Error("should not initialize recursive child when downgraded")
+    })
+    const tool = createRlmPlanTool(manager, {
+      client: dummyClient,
+      directory: "/tmp",
+      deps: {
+        initRlmSession: initSpy,
+        runSyncSubcall: async (input) => {
+          prompts.push(input.prompt)
+          return { ok: true, sessionID: `llm-${prompts.length}`, textOutput: "mapped", messages: [] }
+        },
+      },
+    })
+
+    const raw = await tool.execute({
+      operations: [{ op: "map_rlm", variable_name: "chunks", prompt: "Q={{query}} I={{item}}", output_variable: "out" }],
+    }, createToolContext("ses-root"))
+    const parsed = JSON.parse(raw) as { operation_results: Array<{ downgraded_to?: string }> }
+
+    expect(prompts).toEqual(["Q=Persisted query I=one", "Q=Persisted query I=two"])
+    expect(parsed.operation_results[0].downgraded_to).toBe("map_llm")
+    expect(initSpy).not.toHaveBeenCalled()
+  })
+
+  it("map_rlm uses terminal payload first, FINAL_VAR fallback second, and cleans up", async () => {
+    const manager = new InMemoryRlmManager()
+    manager.seedSession(createSession("ses-root", "root query", 0, 3))
+    manager.createBlobVariable("ses-root", { name: "x", content: "chunk-x" })
+    manager.createBlobVariable("ses-root", { name: "y", content: "chunk-y" })
+    manager.createManifestVariable("ses-root", { name: "chunks", variableNames: ["x", "y"] })
+
+    let callCount = 0
+    const cleanupCalls: string[] = []
+    const tool = createRlmPlanTool(manager, {
+      client: dummyClient,
+      directory: "/tmp",
+      deps: {
+        initRlmSession: async (_ctx, input) => {
+          manager.seedSession(createSession(input.sessionId, input.query, input.depth ?? 0, input.maxDepth))
+          manager.createBlobVariable(input.sessionId, { name: "context", content: input.content ?? "" })
+          return {
+            sessionId: input.sessionId,
+            depth: input.depth ?? 0,
+            maxDepth: input.maxDepth,
+            query: input.query,
+            shouldDistill: false,
+            contextMetadata: { contextVariableName: "context", contextSize: 0, contextType: "content", lineCount: 1 },
+          }
+        },
+        cleanupSyncSubcallSession: (sessionID) => {
+          cleanupCalls.push(sessionID)
+        },
+        runSyncSubcall: async (input) => {
+          callCount += 1
+          const childID = `child-${callCount}`
+          await input.onSessionCreated?.(childID)
+          if (callCount === 1) {
+            return {
+              ok: true,
+              sessionID: childID,
+              textOutput: "FINAL(ignored)",
+              terminalPayload: { final_answer: "from-finish", terminal: true },
+              messages: [],
+            }
+          }
+          manager.createBlobVariable(childID, { name: "child_result", content: "from-final-var" })
+          return { ok: true, sessionID: childID, textOutput: "FINAL_VAR(child_result)", messages: [] }
+        },
+      },
+    })
+
+    await tool.execute({
+      operations: [{ op: "map_rlm", variable_name: "chunks", prompt: "Analyze {{query}}", output_variable: "mapped" }],
+    }, createToolContext("ses-root"))
+
+    const mapped = manager.resolveManifestItems("ses-root", "mapped")
+    expect(mapped.map((blob) => manager.readBlobContent(blob))).toEqual(["from-finish", "from-final-var"])
+    expect(manager.deletedSessions.sort()).toEqual(["child-1", "child-2"])
+    expect(cleanupCalls.sort()).toEqual(["child-1", "child-2"])
+  })
+
+  it("final_var halts the plan and returns terminal=false", async () => {
+    const manager = new InMemoryRlmManager()
+    manager.seedSession(createSession("ses-root", "query", 0, 3))
+    const tool = createRlmPlanTool(manager, { client: dummyClient, directory: "/tmp" })
+
+    const raw = await tool.execute({
+      operations: [
+        { op: "write_var", variable_name: "first", content: "ok" },
+        { op: "final_var", variable_name: "first" },
+        { op: "write_var", variable_name: "never", content: "nope" },
+      ],
+    }, createToolContext("ses-root"))
+    const parsed = JSON.parse(raw) as { terminal: boolean; halted: boolean; final_variable: string; executed_ops: number }
+
+    expect(parsed.terminal).toBe(false)
+    expect(parsed.halted).toBe(true)
+    expect(parsed.final_variable).toBe("first")
+    expect(parsed.executed_ops).toBe(2)
+    expect(manager.getVariableByName("ses-root", "never")).toBeUndefined()
+  })
+})

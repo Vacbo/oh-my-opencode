@@ -13,6 +13,7 @@ import {
   createWriteExistingFileGuardHook,
   createHashlineReadEnhancerHook,
   createJsonErrorRecoveryHook,
+  createRlmOutputDistillerHook,
 } from "../../hooks"
 import {
   getOpenCodeVersion,
@@ -21,10 +22,12 @@ import {
   OPENCODE_NATIVE_AGENTS_INJECTION_VERSION,
 } from "../../shared"
 import { safeCreateHook } from "../../shared/safe-create-hook"
+import type { RlmContextManager } from "../../features/rlm-context/manager"
 
 export type ToolGuardHooks = {
   commentChecker: ReturnType<typeof createCommentCheckerHooks> | null
   toolOutputTruncator: ReturnType<typeof createToolOutputTruncatorHook> | null
+  rlmOutputDistiller: ReturnType<typeof createRlmOutputDistillerHook> | null
   directoryAgentsInjector: ReturnType<typeof createDirectoryAgentsInjectorHook> | null
   directoryReadmeInjector: ReturnType<typeof createDirectoryReadmeInjectorHook> | null
   emptyTaskResponseDetector: ReturnType<typeof createEmptyTaskResponseDetectorHook> | null
@@ -41,8 +44,9 @@ export function createToolGuardHooks(args: {
   modelCacheState: ModelCacheState
   isHookEnabled: (hookName: HookName) => boolean
   safeHookEnabled: boolean
+  rlmContextManager?: RlmContextManager
 }): ToolGuardHooks {
-  const { ctx, pluginConfig, modelCacheState, isHookEnabled, safeHookEnabled } = args
+  const { ctx, pluginConfig, modelCacheState, isHookEnabled, safeHookEnabled, rlmContextManager } = args
   const safeHook = <T>(hookName: HookName, factory: () => T): T | null =>
     safeCreateHook(hookName, factory, { enabled: safeHookEnabled })
 
@@ -56,6 +60,11 @@ export function createToolGuardHooks(args: {
           modelCacheState,
           experimental: pluginConfig.experimental,
         }))
+    : null
+
+  const rlmOutputDistiller = isHookEnabled("rlm-output-distiller")
+    ? safeHook("rlm-output-distiller", () =>
+        createRlmOutputDistillerHook(pluginConfig.experimental?.rlm, rlmContextManager))
     : null
 
   let directoryAgentsInjector: ReturnType<typeof createDirectoryAgentsInjectorHook> | null = null
@@ -108,6 +117,7 @@ export function createToolGuardHooks(args: {
   return {
     commentChecker,
     toolOutputTruncator,
+    rlmOutputDistiller,
     directoryAgentsInjector,
     directoryReadmeInjector,
     emptyTaskResponseDetector,

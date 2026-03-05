@@ -25,6 +25,10 @@ import {
   createTaskList,
   createTaskUpdateTool,
   createHashlineEditTool,
+  createRlmProbeTool,
+  createRlmSearchTool,
+  createRlmPlanTool,
+  createRlmFinishTool,
 } from "../tools"
 import { getMainSessionID } from "../features/claude-code-session-state"
 import { filterDisabledTools } from "../shared/disabled-tools"
@@ -41,7 +45,7 @@ export type ToolRegistryResult = {
 export function createToolRegistry(args: {
   ctx: PluginContext
   pluginConfig: OhMyOpenCodeConfig
-  managers: Pick<Managers, "backgroundManager" | "tmuxSessionManager" | "skillMcpManager">
+  managers: Pick<Managers, "backgroundManager" | "tmuxSessionManager" | "skillMcpManager" | "rlmContextManager">
   skillContext: SkillContext
   availableCategories: AvailableCategory[]
 }): ToolRegistryResult {
@@ -118,6 +122,19 @@ export function createToolRegistry(args: {
     ? { edit: createHashlineEditTool() }
     : {}
 
+  const rlmEnabled = pluginConfig.experimental?.rlm?.enabled ?? false
+  const rlmToolsRecord: Record<string, ToolDefinition> = rlmEnabled && managers.rlmContextManager
+    ? {
+        rlm_probe: createRlmProbeTool(pluginConfig.experimental?.rlm, managers.rlmContextManager),
+        rlm_search: createRlmSearchTool(managers.rlmContextManager),
+        rlm_plan: createRlmPlanTool(managers.rlmContextManager, {
+          client: ctx.client,
+          directory: ctx.directory,
+        }),
+        rlm_finish: createRlmFinishTool(managers.rlmContextManager),
+      }
+    : {}
+
   const allTools: Record<string, ToolDefinition> = {
     ...builtinTools,
     ...createGrepTools(ctx),
@@ -133,6 +150,7 @@ export function createToolRegistry(args: {
     interactive_bash,
     ...taskToolsRecord,
     ...hashlineToolsRecord,
+    ...rlmToolsRecord,
   }
 
   const filteredTools = filterDisabledTools(allTools, pluginConfig.disabled_tools)

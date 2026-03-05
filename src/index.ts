@@ -62,6 +62,7 @@ const OhMyOpenCodePlugin: Plugin = async (ctx) => {
     safeHookEnabled,
     mergedSkills: toolsResult.mergedSkills,
     availableSkills: toolsResult.availableSkills,
+    rlmContextManager: managers.rlmContextManager,
   })
 
   const pluginInterface = createPluginInterface({

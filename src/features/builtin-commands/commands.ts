@@ -6,6 +6,7 @@ import { STOP_CONTINUATION_TEMPLATE } from "./templates/stop-continuation"
 import { REFACTOR_TEMPLATE } from "./templates/refactor"
 import { START_WORK_TEMPLATE } from "./templates/start-work"
 import { HANDOFF_TEMPLATE } from "./templates/handoff"
+import { RLM_COMMAND_TEMPLATE } from "./rlm/template"
 
 const BUILTIN_COMMAND_DEFINITIONS: Record<BuiltinCommandName, Omit<CommandDefinition, "name">> = {
   "init-deep": {
@@ -93,6 +94,11 @@ Timestamp: $TIMESTAMP
 $ARGUMENTS
 </user-request>`,
     argumentHint: "[goal]",
+  },
+  rlm: {
+    description: "(builtin) Start RLM (Recursive Language Model) session with context offloading",
+    template: RLM_COMMAND_TEMPLATE,
+    argumentHint: "<source-files|globs...> -- <query>",
   },
 }
 

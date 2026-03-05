@@ -8,6 +8,7 @@ export const BuiltinCommandNameSchema = z.enum([
   "refactor",
   "start-work",
   "stop-continuation",
+  "rlm",
 ])
 
 export type BuiltinCommandName = z.infer<typeof BuiltinCommandNameSchema>

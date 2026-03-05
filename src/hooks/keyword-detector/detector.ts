@@ -3,9 +3,10 @@ import {
   CODE_BLOCK_PATTERN,
   INLINE_CODE_PATTERN,
 } from "./constants"
+import { getDynamicKeywordDetectors } from "./dynamic-detectors"
 
 export interface DetectedKeyword {
-  type: "ultrawork" | "search" | "analyze"
+  type: string
   message: string
 }
 
@@ -33,12 +34,21 @@ export function detectKeywords(text: string, agentName?: string, modelID?: strin
 
 export function detectKeywordsWithType(text: string, agentName?: string, modelID?: string): DetectedKeyword[] {
   const textWithoutCode = removeCodeBlocks(text)
-  const types: Array<"ultrawork" | "search" | "analyze"> = ["ultrawork", "search", "analyze"]
-  return KEYWORD_DETECTORS.map(({ pattern, message }, index) => ({
+  const staticTypes: Array<"ultrawork" | "search" | "analyze"> = ["ultrawork", "search", "analyze"]
+
+  const staticResults = KEYWORD_DETECTORS.map(({ pattern, message }, index) => ({
     matches: pattern.test(textWithoutCode),
-    type: types[index],
+    type: staticTypes[index],
     message: resolveMessage(message, agentName, modelID),
   }))
+
+  const dynamicResults = getDynamicKeywordDetectors().map(({ type, pattern, message }) => ({
+    matches: pattern.test(textWithoutCode),
+    type,
+    message: resolveMessage(message, agentName, modelID),
+  }))
+
+  return [...staticResults, ...dynamicResults]
     .filter((result) => result.matches)
     .map(({ type, message }) => ({ type, message }))
 }

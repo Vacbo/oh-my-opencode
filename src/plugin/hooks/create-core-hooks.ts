@@ -1,6 +1,7 @@
 import type { HookName, OhMyOpenCodeConfig } from "../../config"
 import type { PluginContext } from "../types"
 import type { ModelCacheState } from "../../plugin-state"
+import type { RlmContextManager } from "../../features/rlm-context/manager"
 
 import { createSessionHooks } from "./create-session-hooks"
 import { createToolGuardHooks } from "./create-tool-guard-hooks"
@@ -12,8 +13,9 @@ export function createCoreHooks(args: {
   modelCacheState: ModelCacheState
   isHookEnabled: (hookName: HookName) => boolean
   safeHookEnabled: boolean
+  rlmContextManager?: RlmContextManager
 }) {
-  const { ctx, pluginConfig, modelCacheState, isHookEnabled, safeHookEnabled } = args
+  const { ctx, pluginConfig, modelCacheState, isHookEnabled, safeHookEnabled, rlmContextManager } = args
 
   const session = createSessionHooks({
     ctx,
@@ -29,6 +31,7 @@ export function createCoreHooks(args: {
     modelCacheState,
     isHookEnabled,
     safeHookEnabled,
+    rlmContextManager,
   })
 
   const transform = createTransformHooks({

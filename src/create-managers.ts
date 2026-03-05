@@ -7,6 +7,7 @@ import { BackgroundManager } from "./features/background-agent"
 import { SkillMcpManager } from "./features/skill-mcp-manager"
 import { initTaskToastManager } from "./features/task-toast-manager"
 import { TmuxSessionManager } from "./features/tmux-subagent"
+import { RlmContextManager } from "./features/rlm-context/manager"
 import { createConfigHandler } from "./plugin-handlers"
 import { log } from "./shared"
 
@@ -14,6 +15,7 @@ export type Managers = {
   tmuxSessionManager: TmuxSessionManager
   backgroundManager: BackgroundManager
   skillMcpManager: SkillMcpManager
+  rlmContextManager: RlmContextManager
   configHandler: ReturnType<typeof createConfigHandler>
 }
 
@@ -66,6 +68,8 @@ export function createManagers(args: {
 
   const skillMcpManager = new SkillMcpManager()
 
+  const rlmContextManager = new RlmContextManager()
+
   const configHandler = createConfigHandler({
     ctx: { directory: ctx.directory, client: ctx.client },
     pluginConfig,
@@ -76,6 +80,7 @@ export function createManagers(args: {
     tmuxSessionManager,
     backgroundManager,
     skillMcpManager,
+    rlmContextManager,
     configHandler,
   }
 }

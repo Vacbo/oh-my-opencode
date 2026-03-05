@@ -1,6 +1,7 @@
 import type { OhMyOpenCodeConfig } from "../config";
 import type { PluginContext } from "./types";
 
+import { rm } from "node:fs/promises";
 import {
   clearSessionAgent,
   getMainSessionID,
@@ -236,6 +237,25 @@ export function createEventHandler(args: {
       }
 
       if (sessionInfo?.id) {
+        // RLM context cleanup: manager-based + filesystem fallback
+        try {
+          await managers.rlmContextManager.deleteSession(sessionInfo.id);
+        } catch (err) {
+          log("[event] RLM context manager cleanup error:", { sessionID: sessionInfo.id, error: err });
+        }
+
+        // Filesystem fallback cleanup
+        try {
+          const rlmConfig = args.pluginConfig.experimental?.rlm;
+          if (rlmConfig?.enabled) {
+            const contextDir = rlmConfig.context_storage_dir || ".sisyphus/rlm-contexts";
+            const sessionPath = `${pluginContext.directory}/${contextDir}/${sessionInfo.id}`;
+            await rm(sessionPath, { recursive: true, force: true });
+          }
+        } catch (err) {
+          log("[event] RLM filesystem cleanup error:", { sessionID: sessionInfo.id, error: err });
+        }
+
         clearSessionAgent(sessionInfo.id);
         lastHandledModelErrorMessageID.delete(sessionInfo.id);
         lastHandledRetryStatusKey.delete(sessionInfo.id);
