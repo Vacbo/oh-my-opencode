@@ -195,7 +195,11 @@ export function createDelegateTask(
       const runInBackground = args.run_in_background === true;
 
       // Resolve task target using catalog-backed normalization
-      const agentCatalog = await getTaskAgentCatalog(options.client);
+      // Only fetch catalog when resolver actually needs it (not for continuations/explicit categories)
+      const needsCatalog = !args.session_id?.trim() && !args.category?.trim();
+      const agentCatalog = needsCatalog
+        ? await getTaskAgentCatalog(options.client)
+        : null;
       const target = resolveTaskTarget(args, availableCategories, agentCatalog);
 
       // Handle resolution errors
@@ -207,11 +211,12 @@ export function createDelegateTask(
       if (target.kind === "continuation") {
         // No mutation needed for continuation
       } else if (target.kind === "category") {
+        const originalSubagentType = args.subagent_type;
         args.category = target.name;
         args.subagent_type = undefined;
         if (target.correctedFrom === "subagent_type") {
           log("[task] corrected subagent_type to category", {
-            original: args.subagent_type,
+            original: originalSubagentType,
             corrected: target.name,
           });
         }
@@ -254,7 +259,7 @@ export function createDelegateTask(
       const parentContext = await resolveParentContext(ctx, options.client);
 
       // Handle continuation (session_id was validated by resolver)
-      if (args.session_id) {
+      if (args.session_id?.trim()) {
         if (runInBackground) {
           return executeBackgroundContinuation(
             args,

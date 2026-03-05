@@ -108,11 +108,12 @@ Create the work plan directly - that's your job as the planning agent.`,
   try {
     // Use pre-fetched catalog if available to avoid double-fetch
     const agentCatalog =
-      preFetchedCatalog ??
-      (await (async () => {
-        const { getTaskAgentCatalog } = await import("./agent-catalog");
-        return getTaskAgentCatalog(client);
-      })());
+      preFetchedCatalog !== undefined
+        ? preFetchedCatalog
+        : await (async () => {
+            const { getTaskAgentCatalog } = await import("./agent-catalog");
+            return getTaskAgentCatalog(client);
+          })();
 
     if (!agentCatalog) {
       return {
