@@ -200,6 +200,7 @@ export function createDelegateTask(
       const agentCatalog = needsCatalog
         ? await getTaskAgentCatalog(options.client)
         : null;
+      const originalSubagentType = args.subagent_type;
       const target = resolveTaskTarget(args, availableCategories, agentCatalog);
 
       // Handle resolution errors
@@ -211,7 +212,6 @@ export function createDelegateTask(
       if (target.kind === "continuation") {
         // No mutation needed for continuation
       } else if (target.kind === "category") {
-        const originalSubagentType = args.subagent_type;
         args.category = target.name;
         args.subagent_type = undefined;
         if (target.correctedFrom === "subagent_type") {
