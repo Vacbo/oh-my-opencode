@@ -20,6 +20,8 @@ export interface BuildRlmSystemPromptOptions {
   };
   /** Prompt mode: 'canonical' (full REPL) or 'keyword-alias' (lightweight) */
   mode: 'canonical' | 'keyword-alias';
+  /** Unified print truncation threshold from config (bytes) */
+  printLimitBytes?: number;
 }
 
 /**
@@ -34,6 +36,7 @@ export function buildRlmSystemPrompt(options: BuildRlmSystemPromptOptions): stri
     maxDepth,
     contextMetadata = {},
     mode,
+    printLimitBytes,
   } = options;
 
   const contextVarName = contextMetadata.contextVariableName || 'context';
@@ -51,6 +54,7 @@ export function buildRlmSystemPrompt(options: BuildRlmSystemPromptOptions): stri
     isRoot,
     canRecurse,
     contextMetadata,
+    printLimitBytes,
   );
 }
 
@@ -61,6 +65,7 @@ function buildCanonicalPrompt(
   isRoot: boolean,
   canRecurse: boolean,
   contextMetadata: Record<string, unknown>,
+  printLimitBytes?: number,
 ): string {
   const depthNote = isRoot
     ? 'You are at the root level (depth 0).'
@@ -70,45 +75,60 @@ function buildCanonicalPrompt(
     ? `You can request recursive child RLM sessions via the \`rlm_plan\` tool's \`map_rlm\` operation.`
     : `You cannot request recursive child RLM sessions. Any \`map_rlm\` operations will automatically downgrade to plain LM sub-calls.`;
 
+  const printLimit = printLimitBytes ?? 2048;
+  const printLimitFormatted = printLimit >= 1024 ? `${(printLimit / 1024).toFixed(0)} KB` : `${printLimit} bytes`;
+
   return `# RLM (Recursive Language Model) System Prompt
+
+## Execution Environment
+
+Your exec code is **JavaScript**. The runtime injects these globals into the REPL namespace:
+
+| Global | Signature | Purpose |
+|--------|-----------|---------|
+| \`getVar(name)\` | \`(name: string) => string\` | Read a stored variable by name |
+| \`setVar(name, value)\` | \`(name: string, value: string) => void\` | Store or overwrite a variable |
+| \`llm_query(prompt, options?)\` | \`(prompt: string, options?: { model?: string }) => Promise<string>\` | Call a language model as a leaf sub-call |
+| \`print(value)\` | \`(value: unknown) => void\` | Inspect a value (bounded, truncated to ~${printLimitFormatted}) |
+| \`getQuery()\` | \`() => string\` | Retrieve the original user query |
 
 ## Mental Model: REPL-First Interaction
 
-You are interacting with a symbolic context store, not raw text. The context is stored in a variable called \`${contextVarName}\`, and you interact with it through a small set of operations.
+You have a variable \`${contextVarName}\` — this is a **real binding** injected into your REPL namespace containing the full context you are working with. You do not see it directly in the conversation; you inspect it through bounded operations.
 
 ### Core REPL Concepts
 
 **\`${contextVarName}\` (context variable)**
-- Contains the full context you are working with.
-- You do not see it directly; you inspect it through bounded operations.
+- Contains the full context data loaded for this session.
+- Access it via \`getVar("${contextVarName}")\` or through the \`rlm_probe\` tool.
 - It persists across your entire session.
 
-**\`llm_query\` (your current task)**
-- The user's original query or task description.
-- Available for reference and for passing to child RLM sessions.
-- Persists across the session.
+**\`llm_query(prompt, options?)\` (leaf LM calls)**
+- A callable function for making language model sub-calls.
+- Use it to analyze, summarize, or transform data that does not require full RLM recursion.
+- Returns a string response from the language model.
+- Example: \`const summary = await llm_query("Summarize: " + chunk)\`
 
-**\`print()\` (bounded inspection)**
-- You inspect context through bounded operations: head, tail, slice, stats, schema, list_vars.
-- Each operation returns a limited amount of data (e.g., first N lines, match summaries).
-- Outputs are truncated to prevent context explosion.
-
-**Truncated REPL outputs**
-- All inspection operations return bounded results.
-- If you need more data, use additional bounded operations (e.g., slice a different range).
+**\`print(value)\` (bounded inspection)**
+- Inspect any value by printing it.
+- Output is **truncated to ~${printLimitFormatted}** to prevent context explosion.
+- If you need more data, use additional bounded operations (slice, head, tail) or inspect in chunks.
 - This is intentional: you learn to work with partial information, like a real REPL.
 
-**\`FINAL(...)\` and \`FINAL_VAR(...)\` (finalization)**
-- In the paper's REPL model, you finalize by setting a variable and returning it.
-- \`FINAL(content)\` returns literal content as the final answer.
-- \`FINAL_VAR(variable_name)\` returns the contents of a stored variable as the final answer.
-- Only one of these ends your session; the other is a plan-local halt.
+**\`FINAL(value)\` and \`FINAL_VAR(varName)\` (finalization)**
+- \`FINAL(content)\` — returns literal content as the final answer and ends the session.
+- \`FINAL_VAR(variable_name)\` — returns the contents of a stored variable as the final answer and ends the session.
+- These are the **only** ways to produce a final result. Exactly one must be called to complete the session.
 
-### Batching Guidance
+### Batching Guidance: Chunk-Then-Query Pattern
 
-- Combine multiple inspection operations in a single turn when possible.
-- Use \`rlm_plan\` to batch transformations: split, select, map, concat, reduce.
-- Avoid sequential single-operation turns; think in terms of workflows.
+When working with large data, **do not** process items one at a time in sequential turns. Instead:
+
+1. **Split** the context into chunks using \`rlm_plan\` with \`split\`.
+2. **Map** a prompt over all chunks in one batch using \`map_llm\` or \`map_rlm\`.
+3. **Reduce** or **concat** the results into a single output.
+
+This chunk-then-query pattern is critical for efficiency. Avoid sequential single-operation turns; think in terms of batch workflows.
 
 ## OMO Tool Surface: Equivalent Operations
 
@@ -170,7 +190,7 @@ Execute a sequence of transformations on variables.
 - \`final_var\`: Halt the plan and return a result variable name (plan-local only)
 
 **Template Expansion:**
-- \`{{query}}\` expands to your original task (\`llm_query\`).
+- \`{{query}}\` expands to your original task (\`getQuery()\`).
 - \`{{item}}\` expands to the current item content in map operations.
 
 **Example:**
@@ -200,11 +220,11 @@ Execute a sequence of transformations on variables.
 
 ### 4. \`rlm_finish\` — Unique Terminal Tool
 
-End the session and return a final answer.
+End the session and return a final answer. Equivalent to \`FINAL()\` / \`FINAL_VAR()\`.
 
 **Input (exactly one):**
-- \`variable_name\`: Load and return the contents of a blob variable
-- \`value\`: Return a literal string
+- \`variable_name\`: Load and return the contents of a blob variable (like \`FINAL_VAR\`)
+- \`value\`: Return a literal string (like \`FINAL\`)
 
 **Returns:** JSON with \`final_answer\`, \`source\`, and \`terminal: true\`.
 
@@ -243,9 +263,9 @@ ${recursionNote}
 
 - **Symbolic, not literal:** You work with variable names and metadata, not raw context.
 - **Bounded operations:** All inspection returns limited data; use multiple operations to explore.
-- **Batching:** Combine operations in \`rlm_plan\` for efficiency.
+- **Batching:** Use the chunk-then-query pattern for large data — split, map, reduce.
 - **Deterministic recursion:** Depth is bounded; leaf sub-calls are plain LMs by default.
-- **Clear terminal:** Only \`rlm_finish\` ends the session.
+- **Clear terminal:** Only \`rlm_finish\` (or inline \`FINAL\`/\`FINAL_VAR\`) ends the session.
 `;
 }
 

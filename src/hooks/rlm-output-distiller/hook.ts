@@ -3,6 +3,7 @@ import { coordinator } from "../../features/rlm-context/coordinator"
 import type { RlmSessionState } from "../../features/rlm-context/types"
 import { applyFeedback } from "../../features/rlm-context/turn-feedback"
 import { shouldDistillOutput, distillOutput } from "./distill-decision"
+import { consumeFinalFromMessage } from "./final-consumer"
 
 const DEFAULT_DISTILL_THRESHOLD_TOKENS = 2000
 
@@ -50,7 +51,18 @@ export function createRlmOutputDistillerHook(
     output.output = distillOutput(output.output, thresholdTokens)
   }
 
+  const chatMessage = async (
+    input: { sessionID: string },
+    output: { message: Record<string, unknown>; parts: Array<{ type: string; text?: string; [key: string]: unknown }> },
+  ) => {
+    const binding = coordinator.resolve(input.sessionID)
+    if (!binding) return
+
+    await consumeFinalFromMessage(input.sessionID, output)
+  }
+
   return {
     "tool.execute.after": toolExecuteAfter,
+    "chat.message": chatMessage,
   }
 }

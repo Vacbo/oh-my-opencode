@@ -27,6 +27,7 @@ export function createRlmCommandPreprocessor(
   const contextManager = new RlmContextManager()
   const maxDepth = rlmConfig?.max_depth ?? DEFAULT_MAX_DEPTH
   const contextDir = rlmConfig?.context_storage_dir ?? DEFAULT_CONTEXT_DIR
+  const printLimitBytes = rlmConfig?.exec?.print_limit_bytes
 
   return async (
     input: { sessionID: string },
@@ -111,6 +112,7 @@ export function createRlmCommandPreprocessor(
         contextType: result.contextMetadata.contextType,
       },
       mode: "canonical",
+      printLimitBytes,
     })
 
     log("[rlm-command] RLM session initialized", {
@@ -121,8 +123,24 @@ export function createRlmCommandPreprocessor(
       lineCount: result.contextMetadata.lineCount,
     })
 
-    output.parts[textPartIndex].text = `${systemPrompt}\n\n---\n\n**Query:** ${query}\n\n**Context loaded:** ${result.contextMetadata.contextVariableName} (${result.contextMetadata.lineCount} lines, ${formatBytes(result.contextMetadata.contextSize)})`
+    const contextSummary = formatContextSummary(
+      result.contextMetadata.contextVariableName,
+      result.contextMetadata.lineCount,
+      result.contextMetadata.contextSize,
+      result.contextMetadata.contextType,
+    )
+
+    output.parts[textPartIndex].text = `${systemPrompt}\n\n---\n\n**Query:** ${query}\n\n${contextSummary}`
   }
+}
+
+function formatContextSummary(
+  variableName: string,
+  lineCount: number,
+  byteSize: number,
+  contextType: string,
+): string {
+  return `**Context loaded:** \`${variableName}\` (${lineCount} lines, ${formatBytes(byteSize)}, source: ${contextType})\n\nUse \`rlm_probe\` to inspect the context. Do NOT attempt to read the raw content directly — it is stored out-of-window.`
 }
 
 function formatBytes(bytes: number): string {

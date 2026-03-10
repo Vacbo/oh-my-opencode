@@ -1,70 +1,111 @@
 import { describe, expect, it } from "bun:test"
-import { parseFinalAnswer } from "./parser"
+import { parseFinalAnswer, isParsedFinalSuccess } from "./parser"
 
 describe("parseFinalAnswer", () => {
-  describe("#given FINAL_VAR and FINAL both present", () => {
-    it("#when parsing #then FINAL_VAR takes precedence", () => {
-      const text = "FINAL(plain answer)\nFINAL_VAR(result_var)"
+  describe("#given valid FINAL tag", () => {
+    it("parses FINAL(value) with simple content", () => {
+      const result = parseFinalAnswer("FINAL(the answer is 42)")
+      expect(result).toEqual({ type: "final", content: "the answer is 42" })
+    })
 
-      const parsed = parseFinalAnswer(text)
+    it("parses FINAL embedded in larger text", () => {
+      const result = parseFinalAnswer("Here is my analysis:\nFINAL(summary of findings)")
+      expect(result).toEqual({ type: "final", content: "summary of findings" })
+    })
 
-      expect(parsed).toEqual({
-        type: "final_var",
-        variableName: "result_var",
-      })
+    it("parses FINAL with empty content", () => {
+      const result = parseFinalAnswer("FINAL()")
+      expect(result).toEqual({ type: "final", content: "" })
     })
   })
 
-  describe("#given FINAL_VAR at line start", () => {
-    it("#when parsing #then returns final_var payload without trimming", () => {
-      const text = "prefix\nFINAL_VAR( result_var )\nsuffix"
-
-      const parsed = parseFinalAnswer(text)
-
-      expect(parsed).toEqual({
-        type: "final_var",
-        variableName: " result_var ",
-      })
+  describe("#given valid FINAL_VAR tag", () => {
+    it("parses FINAL_VAR(varName)", () => {
+      const result = parseFinalAnswer("FINAL_VAR(final_summary)")
+      expect(result).toEqual({ type: "final_var", variableName: "final_summary" })
     })
 
-    it("#when FINAL_VAR is not at line start #then returns null", () => {
-      const text = "prefix FINAL_VAR(result_var)"
+    it("parses FINAL_VAR embedded in larger text", () => {
+      const result = parseFinalAnswer("Done processing.\nFINAL_VAR(result)")
+      expect(result).toEqual({ type: "final_var", variableName: "result" })
+    })
 
-      const parsed = parseFinalAnswer(text)
-
-      expect(parsed).toBeNull()
+    it("trims whitespace from variable name", () => {
+      const result = parseFinalAnswer("FINAL_VAR( myVar )")
+      expect(result).toEqual({ type: "final_var", variableName: "myVar" })
     })
   })
 
-  describe("#given FINAL at line start", () => {
-    it("#when payload is multiline #then captures content greedily", () => {
-      const text = "note\nFINAL(line 1\nline 2)\nextra )"
-
-      const parsed = parseFinalAnswer(text)
-
-      expect(parsed).toEqual({
-        type: "final",
-        content: "line 1\nline 2)\nextra ",
-      })
+  describe("#given malformed tags", () => {
+    it("returns error for FINAL( without closing paren", () => {
+      const result = parseFinalAnswer("FINAL(unclosed content")
+      expect(result).not.toBeNull()
+      expect(result?.type).toBe("error")
+      if (result?.type === "error") {
+        expect(result.message).toContain("missing closing parenthesis")
+      }
     })
 
-    it("#when FINAL is empty #then returns empty content", () => {
-      const text = "FINAL()"
-
-      const parsed = parseFinalAnswer(text)
-
-      expect(parsed).toEqual({
-        type: "final",
-        content: "",
-      })
+    it("returns error for FINAL_VAR( without closing paren", () => {
+      const result = parseFinalAnswer("FINAL_VAR(unclosed")
+      expect(result).not.toBeNull()
+      expect(result?.type).toBe("error")
+      if (result?.type === "error") {
+        expect(result.message).toContain("missing closing parenthesis")
+      }
     })
 
-    it("#when FINAL is not at line start #then returns null", () => {
-      const text = "prefix FINAL(answer)"
-
-      const parsed = parseFinalAnswer(text)
-
-      expect(parsed).toBeNull()
+    it("returns error for FINAL_VAR() with empty name", () => {
+      const result = parseFinalAnswer("FINAL_VAR()")
+      expect(result).not.toBeNull()
+      expect(result?.type).toBe("error")
+      if (result?.type === "error") {
+        expect(result.message).toContain("empty variable name")
+      }
     })
+
+    it("returns error for FINAL_VAR with only whitespace name", () => {
+      const result = parseFinalAnswer("FINAL_VAR(   )")
+      expect(result).not.toBeNull()
+      expect(result?.type).toBe("error")
+      if (result?.type === "error") {
+        expect(result.message).toContain("empty variable name")
+      }
+    })
+  })
+
+  describe("#given no FINAL tags", () => {
+    it("returns null for plain text", () => {
+      expect(parseFinalAnswer("just some regular text")).toBeNull()
+    })
+
+    it("returns null for empty string", () => {
+      expect(parseFinalAnswer("")).toBeNull()
+    })
+
+    it("returns null for partial keyword without parens", () => {
+      expect(parseFinalAnswer("FINAL without parens")).toBeNull()
+    })
+  })
+
+  describe("#given FINAL_VAR takes priority over FINAL", () => {
+    it("matches FINAL_VAR when both patterns exist", () => {
+      const result = parseFinalAnswer("FINAL_VAR(myVar) and also FINAL(something)")
+      expect(result).toEqual({ type: "final_var", variableName: "myVar" })
+    })
+  })
+})
+
+describe("isParsedFinalSuccess", () => {
+  it("returns true for final type", () => {
+    expect(isParsedFinalSuccess({ type: "final", content: "x" })).toBe(true)
+  })
+
+  it("returns true for final_var type", () => {
+    expect(isParsedFinalSuccess({ type: "final_var", variableName: "x" })).toBe(true)
+  })
+
+  it("returns false for error type", () => {
+    expect(isParsedFinalSuccess({ type: "error", message: "bad", raw: "" })).toBe(false)
   })
 })

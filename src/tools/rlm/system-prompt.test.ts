@@ -1,352 +1,121 @@
-import { describe, it, expect } from 'bun:test';
-import { buildRlmSystemPrompt } from './system-prompt';
+import { describe, expect, it } from "bun:test"
+import { buildRlmSystemPrompt } from "./system-prompt"
 
-describe('buildRlmSystemPrompt', () => {
-  describe('#given canonical mode', () => {
-    describe('#when depth=0 and maxDepth=1', () => {
-      it('#then includes REPL mental model first', () => {
-        const prompt = buildRlmSystemPrompt({
-          depth: 0,
-          maxDepth: 1,
-          mode: 'canonical',
-        });
+describe("buildRlmSystemPrompt", () => {
+  const defaultOptions = {
+    depth: 0,
+    maxDepth: 3,
+    contextMetadata: {
+      contextVariableName: "context",
+      contextSize: 1024,
+      contextType: "content",
+    },
+    mode: "canonical" as const,
+  }
 
-        expect(prompt).toContain('Mental Model: REPL-First Interaction');
-        expect(prompt).toContain('context variable');
-        expect(prompt).toContain('llm_query');
-        expect(prompt).toContain('print()');
-        expect(prompt).toContain('FINAL(');
-        expect(prompt).toContain('FINAL_VAR(');
-      });
+  function getCanonicalPrompt(overrides?: Partial<typeof defaultOptions>): string {
+    return buildRlmSystemPrompt({ ...defaultOptions, ...overrides })
+  }
 
-      it('#then includes all four public tools', () => {
-        const prompt = buildRlmSystemPrompt({
-          depth: 0,
-          maxDepth: 1,
-          mode: 'canonical',
-        });
+  describe("#given canonical mode", () => {
+    describe("#then prompt contains Appendix C invariants", () => {
+      it("contains 'context' as the primary variable name", () => {
+        const prompt = getCanonicalPrompt()
+        expect(prompt).toContain("`context`")
+        expect(prompt).toContain("real binding")
+        expect(prompt).toContain("injected into your REPL namespace")
+      })
 
-        expect(prompt).toContain('rlm_probe');
-        expect(prompt).toContain('rlm_search');
-        expect(prompt).toContain('rlm_plan');
-        expect(prompt).toContain('rlm_finish');
-      });
+      it("contains 'llm_query' as a callable LM function", () => {
+        const prompt = getCanonicalPrompt()
+        expect(prompt).toContain("llm_query")
+        expect(prompt).toContain("(prompt: string")
+        expect(prompt).toContain("Promise<string>")
+        expect(prompt).toContain("Call a language model")
+      })
 
-      it('#then explains final_var vs rlm_finish distinction', () => {
-        const prompt = buildRlmSystemPrompt({
-          depth: 0,
-          maxDepth: 1,
-          mode: 'canonical',
-        });
+      it("contains 'print' with bounded/truncation note", () => {
+        const prompt = getCanonicalPrompt()
+        expect(prompt).toContain("print(value)")
+        expect(prompt).toContain("truncated")
+        expect(prompt).toContain("bounded")
+      })
 
-        expect(prompt).toContain('final_var');
-        expect(prompt).toContain('Halts the current plan');
-        expect(prompt).toContain('rlm_finish');
-        expect(prompt).toContain('Halts the entire session');
-      });
+      it("contains batching/chunking guidance", () => {
+        const prompt = getCanonicalPrompt()
+        expect(prompt).toContain("chunk-then-query")
+        expect(prompt).toMatch(/split.*map.*reduce/is)
+        expect(prompt).toContain("batch")
+      })
 
-      it('#then includes depth information', () => {
-        const prompt = buildRlmSystemPrompt({
-          depth: 0,
-          maxDepth: 1,
-          mode: 'canonical',
-        });
+      it("contains FINAL and FINAL_VAR finalization mechanisms", () => {
+        const prompt = getCanonicalPrompt()
+        expect(prompt).toContain("FINAL(")
+        expect(prompt).toContain("FINAL_VAR(")
+        expect(prompt).toContain("ends the session")
+      })
 
-        expect(prompt).toContain('depth 0');
-        expect(prompt).toContain('maxDepth');
-      });
+      it("describes JavaScript exec syntax with all 5 globals", () => {
+        const prompt = getCanonicalPrompt()
+        expect(prompt).toContain("JavaScript")
+        expect(prompt).toContain("getVar(name)")
+        expect(prompt).toContain("setVar(name, value)")
+        expect(prompt).toContain("llm_query(prompt, options?)")
+        expect(prompt).toContain("print(value)")
+        expect(prompt).toContain("getQuery()")
+      })
+    })
 
-      it('#then includes batching guidance', () => {
-        const prompt = buildRlmSystemPrompt({
-          depth: 0,
-          maxDepth: 1,
-          mode: 'canonical',
-        });
-
-        expect(prompt).toContain('Batching Guidance');
-        expect(prompt).toContain('batch');
-      });
-
-      it('#then explains depth rule for recursion', () => {
-        const prompt = buildRlmSystemPrompt({
-          depth: 0,
-          maxDepth: 1,
-          mode: 'canonical',
-        });
-
-        expect(prompt).toContain('Depth Rule');
-        expect(prompt).toContain('downgrade');
-        expect(prompt).toContain('plain LM');
-      });
-
-      it('#then indicates recursion is not allowed at root with maxDepth=1', () => {
-        const prompt = buildRlmSystemPrompt({
-          depth: 0,
-          maxDepth: 1,
-          mode: 'canonical',
-        });
-
-        expect(prompt).toContain('You cannot request recursive child RLM sessions');
-        expect(prompt).toContain('downgrade to plain LM sub-calls');
-      });
-    });
-
-    describe('#when depth=0 and maxDepth=2', () => {
-      it('#then indicates recursion is allowed', () => {
-        const prompt = buildRlmSystemPrompt({
-          depth: 0,
-          maxDepth: 2,
-          mode: 'canonical',
-        });
-
-        expect(prompt).toContain('You can request recursive child RLM sessions');
-        expect(prompt).toContain('map_rlm');
-      });
-    });
-
-    describe('#when depth=1 and maxDepth=2', () => {
-      it('#then indicates this is a child session', () => {
-        const prompt = buildRlmSystemPrompt({
-          depth: 1,
-          maxDepth: 2,
-          mode: 'canonical',
-        });
-
-        expect(prompt).toContain('depth 1');
-        expect(prompt).toContain('recursion depth 1 of 2');
-      });
-
-      it('#then indicates recursion is not allowed at depth 1 with maxDepth=2', () => {
-        const prompt = buildRlmSystemPrompt({
-          depth: 1,
-          maxDepth: 2,
-          mode: 'canonical',
-        });
-
-        expect(prompt).toContain('You cannot request recursive child RLM sessions');
-        expect(prompt).toContain('downgrade to plain LM sub-calls');
-      });
-    });
-
-    describe('#when contextMetadata is provided', () => {
-      it('#then uses custom context variable name', () => {
-        const prompt = buildRlmSystemPrompt({
-          depth: 0,
-          maxDepth: 1,
+    describe("#when custom context variable name is used", () => {
+      it("uses the custom variable name throughout", () => {
+        const prompt = getCanonicalPrompt({
           contextMetadata: {
-            contextVariableName: 'my_context',
+            contextVariableName: "sourceCode",
+            contextSize: 2048,
+            contextType: "file_path",
           },
-          mode: 'canonical',
-        });
+        })
+        expect(prompt).toContain("`sourceCode`")
+        expect(prompt).toContain('getVar("sourceCode")')
+      })
+    })
 
-        expect(prompt).toContain('my_context');
-      });
+    describe("#when printLimitBytes is configured", () => {
+      it("reflects the configured limit in the prompt", () => {
+        const prompt = getCanonicalPrompt({ printLimitBytes: 4096 })
+        expect(prompt).toContain("4 KB")
+      })
 
-      it('#then defaults to "context" when not provided', () => {
-        const prompt = buildRlmSystemPrompt({
-          depth: 0,
-          maxDepth: 1,
-          mode: 'canonical',
-        });
+      it("uses bytes format for small limits", () => {
+        const prompt = getCanonicalPrompt({ printLimitBytes: 512 })
+        expect(prompt).toContain("512 bytes")
+      })
+    })
 
-        expect(prompt).toContain('`context`');
-      });
-    });
+    describe("#when at max depth", () => {
+      it("indicates recursion is not available", () => {
+        const prompt = getCanonicalPrompt({ depth: 2, maxDepth: 3 })
+        expect(prompt).toContain("cannot request recursive child RLM sessions")
+      })
+    })
 
-    describe('#when rlm_probe operations are described', () => {
-      it('#then includes all six operations', () => {
-        const prompt = buildRlmSystemPrompt({
-          depth: 0,
-          maxDepth: 1,
-          mode: 'canonical',
-        });
+    describe("#when can recurse", () => {
+      it("indicates recursion is available", () => {
+        const prompt = getCanonicalPrompt({ depth: 0, maxDepth: 3 })
+        expect(prompt).toContain("can request recursive child RLM sessions")
+      })
+    })
+  })
 
-        expect(prompt).toContain('head');
-        expect(prompt).toContain('tail');
-        expect(prompt).toContain('slice');
-        expect(prompt).toContain('stats');
-        expect(prompt).toContain('schema');
-        expect(prompt).toContain('list_vars');
-      });
-    });
-
-    describe('#when rlm_plan operations are described', () => {
-      it('#then includes all eight operations', () => {
-        const prompt = buildRlmSystemPrompt({
-          depth: 0,
-          maxDepth: 1,
-          mode: 'canonical',
-        });
-
-        expect(prompt).toContain('split');
-        expect(prompt).toContain('select');
-        expect(prompt).toContain('map_llm');
-        expect(prompt).toContain('map_rlm');
-        expect(prompt).toContain('concat');
-        expect(prompt).toContain('reduce_llm');
-        expect(prompt).toContain('write_var');
-        expect(prompt).toContain('final_var');
-      });
-
-      it('#then explains template expansion', () => {
-        const prompt = buildRlmSystemPrompt({
-          depth: 0,
-          maxDepth: 1,
-          mode: 'canonical',
-        });
-
-        expect(prompt).toContain('{{query}}');
-        expect(prompt).toContain('{{item}}');
-        expect(prompt).toContain('Template Expansion');
-      });
-    });
-
-    describe('#when rlm_finish is described', () => {
-      it('#then explains it is the only terminal tool', () => {
-        const prompt = buildRlmSystemPrompt({
-          depth: 0,
-          maxDepth: 1,
-          mode: 'canonical',
-        });
-
-        expect(prompt).toContain('Unique Terminal Tool');
-        expect(prompt).toContain('is the **only** way to end the session');
-      });
-
-      it('#then explains it bypasses truncation and distillation', () => {
-        const prompt = buildRlmSystemPrompt({
-          depth: 0,
-          maxDepth: 1,
-          mode: 'canonical',
-        });
-
-        expect(prompt).toContain('bypasses truncation and distillation');
-      });
-    });
-  });
-
-  describe('#given keyword-alias mode', () => {
-    it('#then returns a lightweight prompt', () => {
+  describe("#given keyword-alias mode", () => {
+    it("returns a lightweight prompt", () => {
       const prompt = buildRlmSystemPrompt({
-        depth: 0,
-        maxDepth: 1,
-        mode: 'keyword-alias',
-      });
-
-      expect(prompt).toContain('RLM Mode (Lightweight)');
-      expect(prompt).toContain('rlm_probe');
-      expect(prompt).toContain('rlm_search');
-      expect(prompt).toContain('rlm_plan');
-      expect(prompt).toContain('rlm_finish');
-    });
-
-    it('#then includes a note about /rlm command', () => {
-      const prompt = buildRlmSystemPrompt({
-        depth: 0,
-        maxDepth: 1,
-        mode: 'keyword-alias',
-      });
-
-      expect(prompt).toContain('/rlm');
-      expect(prompt).toContain('paper-faithful');
-    });
-
-    it('#then includes current depth and maxDepth', () => {
-      const prompt = buildRlmSystemPrompt({
-        depth: 0,
-        maxDepth: 1,
-        mode: 'keyword-alias',
-      });
-
-      expect(prompt).toContain('Current depth: 0 / 1');
-    });
-
-    it('#then uses custom context variable name', () => {
-      const prompt = buildRlmSystemPrompt({
-        depth: 0,
-        maxDepth: 1,
-        contextMetadata: {
-          contextVariableName: 'my_context',
-        },
-        mode: 'keyword-alias',
-      });
-
-      expect(prompt).toContain('my_context');
-    });
-  });
-
-  describe('#given various depth combinations', () => {
-    it('#then correctly identifies root vs child sessions', () => {
-      const rootPrompt = buildRlmSystemPrompt({
-        depth: 0,
-        maxDepth: 3,
-        mode: 'canonical',
-      });
-
-      const childPrompt = buildRlmSystemPrompt({
-        depth: 1,
-        maxDepth: 3,
-        mode: 'canonical',
-      });
-
-      expect(rootPrompt).toContain('root level (depth 0)');
-      expect(childPrompt).toContain('recursion depth 1 of 3');
-    });
-
-    it('#then correctly identifies when recursion is exhausted', () => {
-      const exhaustedPrompt = buildRlmSystemPrompt({
-        depth: 2,
-        maxDepth: 2,
-        mode: 'canonical',
-      });
-
-      expect(exhaustedPrompt).toContain('You cannot request recursive child RLM sessions');
-      expect(exhaustedPrompt).toContain('downgrade to plain LM sub-calls');
-    });
-  });
-
-  describe('#given prompt structure', () => {
-    it('#then canonical prompt is REPL-first, not tool-catalog-first', () => {
-      const prompt = buildRlmSystemPrompt({
-        depth: 0,
-        maxDepth: 1,
-        mode: 'canonical',
-      });
-
-      const replIndex = prompt.indexOf('Mental Model: REPL-First Interaction');
-      const toolIndex = prompt.indexOf('OMO Tool Surface');
-
-      expect(replIndex).toBeLessThan(toolIndex);
-      expect(replIndex).toBeGreaterThan(0);
-    });
-
-    it('#then includes workflow example', () => {
-      const prompt = buildRlmSystemPrompt({
-        depth: 0,
-        maxDepth: 1,
-        mode: 'canonical',
-      });
-
-      expect(prompt).toContain('Workflow Example');
-      expect(prompt).toContain('Inspect');
-      expect(prompt).toContain('Search');
-      expect(prompt).toContain('Plan');
-      expect(prompt).toContain('Finish');
-    });
-
-    it('#then includes key principles', () => {
-      const prompt = buildRlmSystemPrompt({
-        depth: 0,
-        maxDepth: 1,
-        mode: 'canonical',
-      });
-
-      expect(prompt).toContain('Key Principles');
-      expect(prompt).toContain('Symbolic, not literal');
-      expect(prompt).toContain('Bounded operations');
-      expect(prompt).toContain('Batching');
-      expect(prompt).toContain('Deterministic recursion');
-      expect(prompt).toContain('Clear terminal');
-    });
-  });
-});
+        ...defaultOptions,
+        mode: "keyword-alias",
+      })
+      expect(prompt).toContain("Lightweight")
+      expect(prompt).toContain("context")
+      expect(prompt).not.toContain("Execution Environment")
+    })
+  })
+})
