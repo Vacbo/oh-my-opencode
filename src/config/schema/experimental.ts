@@ -1,11 +1,16 @@
 import { z } from "zod"
 import { DynamicContextPruningConfigSchema } from "./dynamic-context-pruning"
 
+const RlmFeedbackConfigSchema = z.object({
+  output_threshold_bytes: z.number().int().min(1).default(2048),
+})
+
 export const RlmConfigSchema = z.object({
   enabled: z.boolean().default(false),
   max_depth: z.number().int().min(1).max(5).default(1),
   context_storage_dir: z.string().default(".sisyphus/rlm-contexts"),
   distill_threshold_tokens: z.number().int().min(100).default(2000),
+  feedback: RlmFeedbackConfigSchema.optional(),
   subcall_model: z.string().optional(),
   probe_max_lines: z.number().int().min(10).default(200),
 })

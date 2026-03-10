@@ -1,6 +1,6 @@
 import { tool, type ToolDefinition } from "@opencode-ai/plugin/tool"
 import type { RlmConfig } from "../../config/schema/experimental"
-import type { RlmBlobVariable, RlmContextVariable, RlmManifestVariable } from "../../features/rlm-context/types"
+import { getHiddenVariableName } from "../../features/rlm-context/turn-feedback"
 import { coordinator } from "../../features/rlm-context/coordinator"
 import { detectSchema } from "./schema-detector"
 import { RlmProbeInputSchema } from "./types"
@@ -8,6 +8,7 @@ import { RlmProbeInputSchema } from "./types"
 const DEFAULT_PROBE_MAX_LINES = 200
 const DEFAULT_VIEW_LINES = 50
 const DEFAULT_LIST_PREVIEW_LINES = 3
+const MAX_REF_PREVIEW_CHARS = 200
 
 export function createRlmProbeTool(
   config?: Pick<RlmConfig, "probe_max_lines">,
@@ -19,6 +20,7 @@ export function createRlmProbeTool(
     args: {
       operation: tool.schema.string(),
       variable_name: tool.schema.string().optional(),
+      ref: tool.schema.string().optional(),
       lines: tool.schema.number().optional(),
       start: tool.schema.number().optional(),
       end: tool.schema.number().optional(),
@@ -70,6 +72,32 @@ export function createRlmProbeTool(
         }))
 
         return JSON.stringify({ operation: "list_vars", variables: summaries })
+      }
+
+      if (input.operation === "inspect_ref") {
+        const variableName = getHiddenVariableName(input.ref)
+        if (!variableName) {
+          return jsonError("invalid_ref", { ref: input.ref })
+        }
+
+        const variable = await contextManager.getVariableByName(sessionId, variableName)
+        if (!variable) {
+          return jsonError("variable_not_found", { ref: input.ref, variable_name: variableName })
+        }
+        if (variable.storageKind !== "blob") {
+          return jsonError("invalid_storage_kind", {
+            expected_storage_kind: "blob",
+            actual_storage_kind: variable.storageKind,
+          })
+        }
+
+        const content = await contextManager.readBlobContent(variable)
+        return JSON.stringify({
+          operation: "inspect_ref",
+          ref: input.ref,
+          variable_name: variable.name,
+          preview: content.slice(0, MAX_REF_PREVIEW_CHARS),
+        })
       }
 
       const variable = await contextManager.getVariableByName(sessionId, input.variable_name)

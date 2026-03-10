@@ -1,7 +1,28 @@
-import { describe, it, expect } from "bun:test"
+import { coordinator } from "../../features/rlm-context/coordinator"
 import { estimateTokens, shouldDistillOutput, distillOutput } from "./distill-decision"
 
+type ExpectChain = {
+  toBe: (expected: unknown) => void
+  toContain: (expected: unknown) => void
+}
+
+type BunTestModule = {
+  afterEach: (fn: () => void) => void
+  describe: (name: string, fn: () => void) => void
+  expect: (value: unknown) => ExpectChain
+  it: (name: string, fn: () => void | Promise<void>) => void
+}
+
+const bunTestSpecifier = "bun:test"
+const { afterEach, describe, it, expect } = (await import(bunTestSpecifier)) as BunTestModule
+
+const SESSION_ID = "ses-distill-rlm"
+
 describe("distill-decision", () => {
+  afterEach(() => {
+    coordinator.unbind(SESSION_ID)
+  })
+
   describe("estimateTokens", () => {
     it("returns 0 for empty string", () => {
       expect(estimateTokens(0)).toBe(0)
@@ -31,6 +52,39 @@ describe("distill-decision", () => {
     })
 
     describe("#given sessionShouldDistill is false", () => {
+      describe("#when session has an active RLM binding", () => {
+        it("#then returns false so turn-feedback can offload instead", () => {
+          coordinator.bind(SESSION_ID, {
+            manager: {
+              getVariableByName: async () => undefined,
+              readBlobContent: async () => "",
+              readManifest: async () => [],
+              listVariables: async () => [],
+              initSession: async () => ({ sessionId: SESSION_ID, depth: 0, maxDepth: 1, contextDir: ".", query: "", shouldDistill: false, variables: new Map() }),
+              getSession: async () => undefined,
+              createBlobVariable: async () => ({ sessionId: SESSION_ID, name: "x", storageKind: "blob", semanticType: "scratch", createdAt: 0, filePath: "x", byteSize: 0, source: "content", lineCount: 0 }),
+              createManifestVariable: async () => ({ sessionId: SESSION_ID, name: "m", storageKind: "manifest", semanticType: "derived", createdAt: 0, filePath: "m", byteSize: 0, itemCount: 0 }),
+              resolveManifestItems: async () => [],
+              deleteSession: async () => {},
+            },
+            rlmSessionId: SESSION_ID,
+            depth: 0,
+            query: "test",
+            contextVariableName: "context",
+            trusted: true,
+          })
+
+          expect(
+            shouldDistillOutput({
+              outputCharCount: 8001,
+              thresholdTokens: 2000,
+              sessionShouldDistill: false,
+              sessionID: SESSION_ID,
+            }),
+          ).toBe(false)
+        })
+      })
+
       describe("#when output exceeds threshold", () => {
         it("#then returns true", () => {
           // 8001 chars = 2001 tokens > 2000 threshold

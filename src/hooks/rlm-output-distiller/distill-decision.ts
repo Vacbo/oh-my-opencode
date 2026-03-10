@@ -1,16 +1,23 @@
-const CHARS_PER_TOKEN = 4
+import { coordinator } from "../../features/rlm-context/coordinator"
 
-export function estimateTokens(charCount: number): number {
-  return Math.ceil(charCount / CHARS_PER_TOKEN)
-}
+const CHARS_PER_TOKEN = 4
 
 export interface DistillDecisionInput {
   outputCharCount: number
   thresholdTokens: number
   sessionShouldDistill: boolean
+  sessionID?: string
+}
+
+export function estimateTokens(charCount: number): number {
+  return Math.ceil(charCount / CHARS_PER_TOKEN)
 }
 
 export function shouldDistillOutput(input: DistillDecisionInput): boolean {
+  if (input.sessionID && coordinator.resolve(input.sessionID)) {
+    return false
+  }
+
   if (input.sessionShouldDistill) return true
   return estimateTokens(input.outputCharCount) > input.thresholdTokens
 }

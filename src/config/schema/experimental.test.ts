@@ -1,5 +1,20 @@
-import { describe, it, expect } from "bun:test"
 import { RlmConfigSchema, ExperimentalConfigSchema } from "./experimental"
+
+type ExpectChain = {
+  toBe: (expected: unknown) => void
+  toBeDefined: () => void
+  toBeUndefined: () => void
+  toThrow: () => void
+}
+
+type BunTestModule = {
+  describe: (name: string, fn: () => void) => void
+  expect: (value: unknown) => ExpectChain
+  it: (name: string, fn: () => void | Promise<void>) => void
+}
+
+const bunTestSpecifier = "bun:test"
+const { describe, it, expect } = (await import(bunTestSpecifier)) as BunTestModule
 
 describe("RlmConfigSchema", () => {
   describe("valid configs", () => {
@@ -12,6 +27,7 @@ describe("RlmConfigSchema", () => {
       expect(result.max_depth).toBe(1)
       expect(result.context_storage_dir).toBe(".sisyphus/rlm-contexts")
       expect(result.distill_threshold_tokens).toBe(2000)
+      expect(result.feedback).toBeUndefined()
       expect(result.probe_max_lines).toBe(200)
       expect(result.subcall_model).toBeUndefined()
     })
@@ -22,6 +38,7 @@ describe("RlmConfigSchema", () => {
         max_depth: 2,
         context_storage_dir: "/custom/path",
         distill_threshold_tokens: 5000,
+        feedback: { output_threshold_bytes: 4096 },
         subcall_model: "claude-3-sonnet",
         probe_max_lines: 500,
       })
@@ -29,6 +46,7 @@ describe("RlmConfigSchema", () => {
       expect(result.max_depth).toBe(2)
       expect(result.context_storage_dir).toBe("/custom/path")
       expect(result.distill_threshold_tokens).toBe(5000)
+      expect(result.feedback!.output_threshold_bytes).toBe(4096)
       expect(result.subcall_model).toBe("claude-3-sonnet")
       expect(result.probe_max_lines).toBe(500)
     })
@@ -39,6 +57,7 @@ describe("RlmConfigSchema", () => {
       expect(result.max_depth).toBe(1)
       expect(result.context_storage_dir).toBe(".sisyphus/rlm-contexts")
       expect(result.distill_threshold_tokens).toBe(2000)
+      expect(result.feedback).toBeUndefined()
       expect(result.probe_max_lines).toBe(200)
     })
 
@@ -58,6 +77,11 @@ describe("RlmConfigSchema", () => {
     it("accepts probe_max_lines at minimum", () => {
       const result = RlmConfigSchema.parse({ probe_max_lines: 10 })
       expect(result.probe_max_lines).toBe(10)
+    })
+
+    it("applies default feedback threshold when feedback object is present", () => {
+      const result = RlmConfigSchema.parse({ feedback: {} })
+      expect(result.feedback!.output_threshold_bytes).toBe(2048)
     })
   })
 
@@ -89,6 +113,10 @@ describe("RlmConfigSchema", () => {
     it("rejects non-integer probe_max_lines", () => {
       expect(() => RlmConfigSchema.parse({ probe_max_lines: 100.5 })).toThrow()
     })
+
+    it("rejects feedback.output_threshold_bytes < 1", () => {
+      expect(() => RlmConfigSchema.parse({ feedback: { output_threshold_bytes: 0 } })).toThrow()
+    })
   })
 })
 
@@ -115,6 +143,7 @@ describe("ExperimentalConfigSchema with rlm field", () => {
       expect(result.rlm!.max_depth).toBe(1)
       expect(result.rlm!.context_storage_dir).toBe(".sisyphus/rlm-contexts")
       expect(result.rlm!.distill_threshold_tokens).toBe(2000)
+      expect(result.rlm!.feedback).toBeUndefined()
       expect(result.rlm!.probe_max_lines).toBe(200)
     })
 
@@ -151,6 +180,7 @@ describe("ExperimentalConfigSchema with rlm field", () => {
           max_depth: 3,
           context_storage_dir: "/tmp/rlm",
           distill_threshold_tokens: 3000,
+          feedback: { output_threshold_bytes: 8192 },
           subcall_model: "claude-3-opus",
           probe_max_lines: 300,
         },
@@ -158,6 +188,7 @@ describe("ExperimentalConfigSchema with rlm field", () => {
       expect(result.rlm).toBeDefined()
       expect(result.rlm!.enabled).toBe(true)
       expect(result.rlm!.max_depth).toBe(3)
+      expect(result.rlm!.feedback!.output_threshold_bytes).toBe(8192)
       expect(result.rlm!.subcall_model).toBe("claude-3-opus")
     })
   })

@@ -29,6 +29,11 @@ const RlmProbeSchemaOpSchema = z.object({
   variable_name: z.string(),
 })
 
+const RlmProbeInspectRefSchema = z.object({
+  operation: z.literal("inspect_ref"),
+  ref: z.string(),
+})
+
 const RlmProbeListVarsSchema = z.object({
   operation: z.literal("list_vars"),
 })
@@ -39,6 +44,7 @@ export const RlmProbeInputSchema = z.discriminatedUnion("operation", [
   RlmProbeSliceSchema,
   RlmProbeStatsSchema,
   RlmProbeSchemaOpSchema,
+  RlmProbeInspectRefSchema,
   RlmProbeListVarsSchema,
 ])
 

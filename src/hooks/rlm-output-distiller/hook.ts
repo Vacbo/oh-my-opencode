@@ -1,5 +1,7 @@
 import type { RlmConfig } from "../../config/schema/experimental"
+import { coordinator } from "../../features/rlm-context/coordinator"
 import type { RlmSessionState } from "../../features/rlm-context/types"
+import { applyFeedback } from "../../features/rlm-context/turn-feedback"
 import { shouldDistillOutput, distillOutput } from "./distill-decision"
 
 const DEFAULT_DISTILL_THRESHOLD_TOKENS = 2000
@@ -13,6 +15,7 @@ export function createRlmOutputDistillerHook(
   rlmContextManager?: RlmContextManagerLike,
 ) {
   const thresholdTokens = config?.distill_threshold_tokens ?? DEFAULT_DISTILL_THRESHOLD_TOKENS
+  const feedbackConfig = config ?? { enabled: false, max_depth: 1, context_storage_dir: ".sisyphus/rlm-contexts", distill_threshold_tokens: thresholdTokens, probe_max_lines: 200 }
 
   const toolExecuteAfter = async (
     input: { tool: string; sessionID: string; callID: string },
@@ -27,10 +30,19 @@ export function createRlmOutputDistillerHook(
 
     if (typeof output.output !== "string") return
 
+    output.output = await applyFeedback(
+      output.output,
+      input.sessionID,
+      input.tool,
+      coordinator.resolve(input.sessionID),
+      feedbackConfig,
+    )
+
     const needsDistill = shouldDistillOutput({
       outputCharCount: output.output.length,
       thresholdTokens,
       sessionShouldDistill: session.shouldDistill,
+      sessionID: input.sessionID,
     })
 
     if (!needsDistill) return
