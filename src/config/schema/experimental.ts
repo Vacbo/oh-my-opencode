@@ -14,6 +14,12 @@ const RlmExecConfigSchema = z.object({
   print_limit_bytes: z.number().int().min(1).default(2048),
 })
 
+const RlmParallelConfigSchema = z.object({
+  enabled: z.boolean().default(false),
+  max_concurrent: z.number().int().min(1).default(4),
+  fallback_chain: z.array(z.string()).default([]),
+})
+
 export const RlmConfigSchema = z.object({
   enabled: z.boolean().default(false),
   max_depth: z.number().int().min(1).max(5).default(1),
@@ -23,6 +29,7 @@ export const RlmConfigSchema = z.object({
   exec: RlmExecConfigSchema.optional(),
   subcall_model: z.string().optional(),
   probe_max_lines: z.number().int().min(10).default(200),
+  parallel: RlmParallelConfigSchema.optional(),
 })
 
 export type RlmConfig = z.infer<typeof RlmConfigSchema>

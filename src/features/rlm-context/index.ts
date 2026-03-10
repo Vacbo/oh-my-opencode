@@ -6,3 +6,4 @@ export {
   type RlmContextManagerLike,
   coordinator
 } from './coordinator';
+export { createRlmPersistence, type RlmPersistence, type PersistedSession } from './persistence'
