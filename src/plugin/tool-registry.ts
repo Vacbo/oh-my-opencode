@@ -125,13 +125,13 @@ export function createToolRegistry(args: {
   const rlmEnabled = pluginConfig.experimental?.rlm?.enabled ?? false
   const rlmToolsRecord: Record<string, ToolDefinition> = rlmEnabled && managers.rlmContextManager
     ? {
-        rlm_probe: createRlmProbeTool(pluginConfig.experimental?.rlm, managers.rlmContextManager),
-        rlm_search: createRlmSearchTool(managers.rlmContextManager),
-        rlm_plan: createRlmPlanTool(managers.rlmContextManager, {
+        rlm_probe: createRlmProbeTool(pluginConfig.experimental?.rlm),
+        rlm_search: createRlmSearchTool(),
+        rlm_plan: createRlmPlanTool({
           client: ctx.client,
           directory: ctx.directory,
         }),
-        rlm_finish: createRlmFinishTool(managers.rlmContextManager),
+        rlm_finish: createRlmFinishTool(),
       }
     : {}
 

@@ -1,6 +1,7 @@
 import { tool, type ToolDefinition } from "@opencode-ai/plugin/tool"
 import type { RlmConfig } from "../../config/schema/experimental"
 import type { RlmBlobVariable, RlmContextVariable, RlmManifestVariable } from "../../features/rlm-context/types"
+import { coordinator } from "../../features/rlm-context/coordinator"
 import { detectSchema } from "./schema-detector"
 import { RlmProbeInputSchema } from "./types"
 
@@ -8,40 +9,8 @@ const DEFAULT_PROBE_MAX_LINES = 200
 const DEFAULT_VIEW_LINES = 50
 const DEFAULT_LIST_PREVIEW_LINES = 3
 
-export interface RlmContextManagerForProbe {
-  getVariableByName(
-    sessionId: string,
-    name: string,
-  ): Promise<RlmContextVariable | undefined> | RlmContextVariable | undefined
-
-  readBlobContent(variable: RlmBlobVariable): Promise<string> | string
-  readManifest(variable: RlmManifestVariable): Promise<string[]> | string[]
-  listVariables(sessionId: string): Promise<RlmContextVariable[]> | RlmContextVariable[]
-}
-
-function toLines(content: string): string[] {
-  if (content.length === 0) {
-    return []
-  }
-  const lines = content.replace(/\r\n/g, "\n").split("\n")
-  if (lines.at(-1) === "") {
-    lines.pop()
-  }
-  return lines
-}
-
-function clampRequestedLines(lines: number | undefined, probeMaxLines: number): number {
-  const requested = lines ?? DEFAULT_VIEW_LINES
-  return Math.max(1, Math.min(requested, probeMaxLines))
-}
-
-function jsonError(error: string, details: Record<string, unknown> = {}): string {
-  return JSON.stringify({ error, ...details })
-}
-
 export function createRlmProbeTool(
   config?: Pick<RlmConfig, "probe_max_lines">,
-  contextManager?: RlmContextManagerForProbe,
 ): ToolDefinition {
   const probeMaxLines = config?.probe_max_lines ?? DEFAULT_PROBE_MAX_LINES
 
@@ -55,9 +24,12 @@ export function createRlmProbeTool(
       end: tool.schema.number().optional(),
     },
     execute: async (args, context): Promise<string> => {
-      if (!contextManager) {
-        return jsonError("context_manager_unavailable")
+      const binding = coordinator.resolve(context.sessionID)
+      if (!binding) {
+        return jsonError("session_not_found", { sessionID: context.sessionID })
       }
+
+      const contextManager = binding.manager
 
       const parsed = RlmProbeInputSchema.safeParse(args)
       if (!parsed.success) {
@@ -166,4 +138,24 @@ export function createRlmProbeTool(
       return JSON.stringify({ operation: "tail", variable_name: variable.name, returned_lines: selected.length, content: selected.join("\n") })
     },
   })
+}
+
+function toLines(content: string): string[] {
+  if (content.length === 0) {
+    return []
+  }
+  const lines = content.replace(/\r\n/g, "\n").split("\n")
+  if (lines.at(-1) === "") {
+    lines.pop()
+  }
+  return lines
+}
+
+function clampRequestedLines(lines: number | undefined, probeMaxLines: number): number {
+  const requested = lines ?? DEFAULT_VIEW_LINES
+  return Math.max(1, Math.min(requested, probeMaxLines))
+}
+
+function jsonError(error: string, details: Record<string, unknown> = {}): string {
+  return JSON.stringify({ error, ...details })
 }

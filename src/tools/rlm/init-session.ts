@@ -4,6 +4,8 @@ import type {
   RlmSessionState,
   InitRlmSessionOptions,
 } from "../../features/rlm-context/types"
+import type { RlmBinding } from "../../features/rlm-context/coordinator"
+import type { RlmContextManager } from "../../features/rlm-context/manager"
 import { InitRlmSessionInputSchema } from "./types"
 
 export interface RlmContextManagerForInit {
@@ -35,6 +37,21 @@ export interface InitRlmSessionResult {
     contextSize: number
     contextType: string
     lineCount: number
+  }
+}
+
+export function createRlmBinding(
+  contextManager: RlmContextManager,
+  result: InitRlmSessionResult,
+  trusted: boolean,
+): RlmBinding {
+  return {
+    manager: contextManager,
+    rlmSessionId: result.sessionId,
+    depth: result.depth,
+    query: result.query,
+    contextVariableName: result.contextMetadata.contextVariableName,
+    trusted,
   }
 }
 

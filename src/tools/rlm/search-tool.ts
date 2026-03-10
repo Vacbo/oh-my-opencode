@@ -1,5 +1,6 @@
 import { tool, type ToolContext, type ToolDefinition } from "@opencode-ai/plugin/tool"
 import type { RlmBlobVariable, RlmContextVariable } from "../../features/rlm-context/types"
+import { coordinator } from "../../features/rlm-context/coordinator"
 import { RlmSearchInputSchema } from "./types"
 
 const DEFAULT_MAX_RESULTS = 20
@@ -16,14 +17,6 @@ type SearchMatch = {
   excerpt: string
   context_before: SearchLineContext[]
   context_after: SearchLineContext[]
-}
-
-export interface RlmContextManagerForSearch {
-  getVariableByName(
-    sessionId: string,
-    name: string,
-  ): RlmContextVariable | undefined | Promise<RlmContextVariable | undefined>
-  readBlobContent(variable: RlmBlobVariable): string | Promise<string>
 }
 
 export interface RlmSearchToolOptions {
@@ -90,7 +83,6 @@ function toMaxResults(inputMaxResults?: number): number {
 }
 
 export function createRlmSearchTool(
-  contextManager: RlmContextManagerForSearch,
   options: RlmSearchToolOptions = {},
 ): ToolDefinition {
   const now = options.now ?? Date.now
@@ -107,6 +99,13 @@ export function createRlmSearchTool(
       max_results: tool.schema.number().int().min(1).optional().describe("Maximum matches to return (bounded internally)"),
     },
     execute: async (args: unknown, context: ToolContext): Promise<string> => {
+      const binding = coordinator.resolve(context.sessionID)
+      if (!binding) {
+        return toJson({ error: "session_not_found", sessionID: context.sessionID })
+      }
+
+      const contextManager = binding.manager
+
       const parsed = RlmSearchInputSchema.safeParse(args)
       if (!parsed.success) {
         return toJson({ error: "invalid_arguments" })
@@ -128,7 +127,7 @@ export function createRlmSearchTool(
         })
       }
 
-      const content = await contextManager.readBlobContent(variable)
+      const content = await contextManager.readBlobContent(variable as RlmBlobVariable)
       const lines = toLines(content)
       const maxResults = toMaxResults(parsed.data.max_results)
       const matches: SearchMatch[] = []

@@ -1,5 +1,6 @@
 import type { ToolContext } from "@opencode-ai/plugin/tool"
 import type { RlmBlobVariable, RlmContextVariable, RlmManifestVariable } from "../../features/rlm-context/types"
+import { coordinator, type RlmContextManagerLike } from "../../features/rlm-context/coordinator"
 import { createRlmProbeTool } from "./tools"
 
 type ExpectChain = {
@@ -9,27 +10,22 @@ type ExpectChain = {
 type BunTestModule = {
   describe: (name: string, fn: () => void) => void
   it: (name: string, fn: () => void | Promise<void>) => void
+  afterEach: (fn: () => void) => void
   expect: (value: unknown) => ExpectChain
 }
 
 const bunTestSpecifier = "bun:test"
-const { describe, expect, it } = (await import(bunTestSpecifier)) as BunTestModule
+const { describe, expect, it, afterEach } = (await import(bunTestSpecifier)) as BunTestModule
 
-type ProbeManager = {
-  getVariableByName: (sessionId: string, name: string) => Promise<RlmContextVariable | undefined> | RlmContextVariable | undefined
-  readBlobContent: (variable: RlmBlobVariable) => Promise<string> | string
-  readManifest: (variable: RlmManifestVariable) => Promise<string[]> | string[]
-  listVariables: (sessionId: string) => Promise<RlmContextVariable[]> | RlmContextVariable[]
-}
+const SESSION_ID = "ses-1"
 
-function createFixtureManager(): ProbeManager {
-  const sessionId = "ses-1"
+function createFixtureManager(): RlmContextManagerLike {
   const variables = new Map<string, RlmContextVariable>()
   const blobContents = new Map<string, string>()
   const manifests = new Map<string, string[]>()
 
   const blob: RlmBlobVariable = {
-    sessionId,
+    sessionId: SESSION_ID,
     name: "context",
     storageKind: "blob",
     semanticType: "context",
@@ -43,7 +39,7 @@ function createFixtureManager(): ProbeManager {
   blobContents.set(blob.name, "line-1\nline-2\nline-3\nline-4\nline-5")
 
   const manifest: RlmManifestVariable = {
-    sessionId,
+    sessionId: SESSION_ID,
     name: "parts",
     storageKind: "manifest",
     semanticType: "derived",
@@ -57,18 +53,29 @@ function createFixtureManager(): ProbeManager {
 
   return {
     getVariableByName: async (targetSessionId: string, name: string) =>
-      targetSessionId === sessionId ? variables.get(name) : undefined,
+      targetSessionId === SESSION_ID ? variables.get(name) : undefined,
     readBlobContent: async (variable: RlmBlobVariable) => blobContents.get(variable.name) ?? "",
     readManifest: async (variable: RlmManifestVariable) => manifests.get(variable.name) ?? [],
     listVariables: async (targetSessionId: string) =>
-      targetSessionId === sessionId ? Array.from(variables.values()) : [],
+      targetSessionId === SESSION_ID ? Array.from(variables.values()) : [],
+    // Stub plan methods — not used by probe tool
+    initSession: async () => { throw new Error("not used") },
+    getSession: async () => undefined,
+    createBlobVariable: async () => { throw new Error("not used") },
+    createManifestVariable: async () => { throw new Error("not used") },
+    resolveManifestItems: async () => [],
+    deleteSession: async () => {},
   }
 }
 
 describe("createRlmProbeTool", () => {
+  afterEach(() => {
+    coordinator.unbind(SESSION_ID)
+  })
+
   function createToolContext(): ToolContext {
     return {
-      sessionID: "ses-1",
+      sessionID: SESSION_ID,
       messageID: "msg-test",
       agent: "test-agent",
       abort: new AbortController().signal,
@@ -77,8 +84,20 @@ describe("createRlmProbeTool", () => {
     } as ToolContext
   }
 
+  function bindFixture(): void {
+    coordinator.bind(SESSION_ID, {
+      manager: createFixtureManager(),
+      rlmSessionId: SESSION_ID,
+      depth: 0,
+      query: "test",
+      contextVariableName: "context",
+      trusted: true,
+    })
+  }
+
   it("bounds head and tail output by probe_max_lines", async () => {
-    const tool = createRlmProbeTool({ probe_max_lines: 2 }, createFixtureManager())
+    bindFixture()
+    const tool = createRlmProbeTool({ probe_max_lines: 2 })
 
     const headRaw = await tool.execute(
       { operation: "head", variable_name: "context", lines: 5 },
@@ -99,7 +118,8 @@ describe("createRlmProbeTool", () => {
   })
 
   it("bounds slice output by probe_max_lines", async () => {
-    const tool = createRlmProbeTool({ probe_max_lines: 2 }, createFixtureManager())
+    bindFixture()
+    const tool = createRlmProbeTool({ probe_max_lines: 2 })
 
     const raw = await tool.execute(
       { operation: "slice", variable_name: "context", start: 1, end: 4 },
@@ -113,7 +133,8 @@ describe("createRlmProbeTool", () => {
   })
 
   it("supports stats for manifest variables", async () => {
-    const tool = createRlmProbeTool({ probe_max_lines: 20 }, createFixtureManager())
+    bindFixture()
+    const tool = createRlmProbeTool({ probe_max_lines: 20 })
 
     const raw = await tool.execute(
       { operation: "stats", variable_name: "parts" },
@@ -127,7 +148,8 @@ describe("createRlmProbeTool", () => {
   })
 
   it("allows list_vars without variable_name and caps previews", async () => {
-    const tool = createRlmProbeTool({ probe_max_lines: 2 }, createFixtureManager())
+    bindFixture()
+    const tool = createRlmProbeTool({ probe_max_lines: 2 })
 
     const raw = await tool.execute({ operation: "list_vars" }, createToolContext())
     const parsed = JSON.parse(raw)
@@ -138,7 +160,8 @@ describe("createRlmProbeTool", () => {
   })
 
   it("returns JSON errors for invalid storage kind", async () => {
-    const tool = createRlmProbeTool({ probe_max_lines: 2 }, createFixtureManager())
+    bindFixture()
+    const tool = createRlmProbeTool({ probe_max_lines: 2 })
 
     const raw = await tool.execute(
       { operation: "head", variable_name: "parts", lines: 1 },

@@ -4,6 +4,7 @@ import { join } from "node:path"
 import { tmpdir } from "node:os"
 import type { ToolContext } from "@opencode-ai/plugin/tool"
 import { RlmContextManager } from "./manager"
+import { coordinator } from "./coordinator"
 import { createRlmProbeTool } from "../../tools/rlm/probe-tool"
 import { createRlmSearchTool } from "../../tools/rlm/search-tool"
 import { createRlmPlanTool } from "../../tools/rlm/tools"
@@ -26,6 +27,7 @@ const dummyClient = {} as any
 
 describe("RLM Integration Tests", () => {
   let tempDirs: string[] = []
+  let boundSessions: string[] = []
 
   function createTempDir(): string {
     const directory = mkdtempSync(join(tmpdir(), "omo-rlm-integration-"))
@@ -33,7 +35,23 @@ describe("RLM Integration Tests", () => {
     return directory
   }
 
+  function bindSession(sessionId: string, manager: RlmContextManager): void {
+    coordinator.bind(sessionId, {
+      manager,
+      rlmSessionId: sessionId,
+      depth: 0,
+      query: "test",
+      contextVariableName: "context",
+      trusted: true,
+    })
+    boundSessions.push(sessionId)
+  }
+
   afterEach(() => {
+    while (boundSessions.length > 0) {
+      const sessionId = boundSessions.pop()
+      if (sessionId) coordinator.unbind(sessionId)
+    }
     while (tempDirs.length > 0) {
       const directory = tempDirs.pop()
       if (directory) {
@@ -53,12 +71,13 @@ describe("RLM Integration Tests", () => {
         maxDepth: 2,
         query: "Test query",
       })
+      bindSession("ses-root", manager)
 
       // Create tools - they should not throw
-      const probeTool = createRlmProbeTool(undefined, manager)
-      const searchTool = createRlmSearchTool(manager)
-      const planTool = createRlmPlanTool(manager, { client: dummyClient, directory: contextDir })
-      const finishTool = createRlmFinishTool(manager)
+      const probeTool = createRlmProbeTool()
+      const searchTool = createRlmSearchTool()
+      const planTool = createRlmPlanTool({ client: dummyClient, directory: contextDir })
+      const finishTool = createRlmFinishTool()
 
       // Verify tools exist
       expect(probeTool).toBeDefined()
@@ -82,6 +101,7 @@ describe("RLM Integration Tests", () => {
         maxDepth: 1,
         contextDir,
       })
+      bindSession(sessionId, manager)
 
       expect(initResult.sessionId).toBe(sessionId)
       expect(initResult.depth).toBe(0)
@@ -89,7 +109,7 @@ describe("RLM Integration Tests", () => {
       expect(initResult.query).toBe("Summarize the context")
 
       // Step 2: Use rlm_probe to inspect context
-      const probeTool = createRlmProbeTool(undefined, manager)
+      const probeTool = createRlmProbeTool()
       const probeResult = await probeTool.execute(
         { operation: "head", variable_name: "context", lines: 2 },
         createToolContext(sessionId),
@@ -99,7 +119,7 @@ describe("RLM Integration Tests", () => {
       expect(probeData.content).toContain("line1")
 
       // Step 3: Use rlm_plan with split, map_llm, reduce_llm, final_var
-      const planTool = createRlmPlanTool(manager, {
+      const planTool = createRlmPlanTool({
         client: dummyClient,
         directory: contextDir,
         deps: {
@@ -133,7 +153,7 @@ describe("RLM Integration Tests", () => {
       expect(planData.final_variable).toBe("final")
 
       // Step 4: Use rlm_finish to return the final answer
-      const finishTool = createRlmFinishTool(manager)
+      const finishTool = createRlmFinishTool()
       const finishResult = await finishTool.execute(
         { variable_name: "final" },
         createToolContext(sessionId),
@@ -159,6 +179,7 @@ describe("RLM Integration Tests", () => {
         query: "Root query",
         depth: 0,
       })
+      bindSession(sessionId, manager)
 
       // Create test data
       await manager.createBlobVariable(sessionId, { name: "item1", content: "data1" })
@@ -168,7 +189,7 @@ describe("RLM Integration Tests", () => {
         variableNames: ["item1", "item2"],
       })
 
-      const planTool = createRlmPlanTool(manager, {
+      const planTool = createRlmPlanTool({
         client: dummyClient,
         directory: contextDir,
         deps: {
@@ -213,6 +234,7 @@ describe("RLM Integration Tests", () => {
         query: "Root query",
         depth: 0,
       })
+      bindSession(sessionId, manager)
 
       // Create test data
       await manager.createBlobVariable(sessionId, { name: "item1", content: "data1" })
@@ -224,7 +246,7 @@ describe("RLM Integration Tests", () => {
 
       let childSessionCreated = false
 
-      const planTool = createRlmPlanTool(manager, {
+      const planTool = createRlmPlanTool({
         client: dummyClient,
         directory: contextDir,
         deps: {
@@ -398,6 +420,7 @@ describe("RLM Integration Tests", () => {
         maxDepth: 1,
         query: "Test manifest",
       })
+      bindSession(sessionId, manager)
 
       // Create context blob
       await manager.createBlobVariable(sessionId, {
@@ -405,7 +428,7 @@ describe("RLM Integration Tests", () => {
         content: "aaabbbcccdddeee",
       })
 
-      const planTool = createRlmPlanTool(manager, {
+      const planTool = createRlmPlanTool({
         client: dummyClient,
         directory: contextDir,
       })
@@ -446,6 +469,7 @@ describe("RLM Integration Tests", () => {
         maxDepth: 1,
         query: "Test finish",
       })
+      bindSession(sessionId, manager)
 
       // Create a large result variable
       const largeResult = "x".repeat(5000)
@@ -454,7 +478,7 @@ describe("RLM Integration Tests", () => {
         content: largeResult,
       })
 
-      const finishTool = createRlmFinishTool(manager)
+      const finishTool = createRlmFinishTool()
       const result = await finishTool.execute(
         { variable_name: "result" },
         createToolContext(sessionId),
@@ -477,8 +501,9 @@ describe("RLM Integration Tests", () => {
         maxDepth: 1,
         query: "Test final_var",
       })
+      bindSession(sessionId, manager)
 
-      const planTool = createRlmPlanTool(manager, {
+      const planTool = createRlmPlanTool({
         client: dummyClient,
         directory: contextDir,
       })

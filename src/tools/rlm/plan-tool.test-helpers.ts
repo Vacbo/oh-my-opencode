@@ -7,8 +7,9 @@ import type {
   RlmSessionState,
 } from "../../features/rlm-context/types"
 import type { RlmContextManagerForPlan } from "./plan-tool"
+import { coordinator, type RlmContextManagerLike } from "../../features/rlm-context/coordinator"
 
-export class InMemoryRlmManager implements RlmContextManagerForPlan {
+export class InMemoryRlmManager implements RlmContextManagerForPlan, RlmContextManagerLike {
   private readonly sessions = new Map<string, RlmSessionState>()
   private readonly blobs = new Map<string, string>()
   readonly deletedSessions: string[] = []
@@ -106,6 +107,17 @@ export class InMemoryRlmManager implements RlmContextManagerForPlan {
     })
   }
 
+  readManifest(variable: RlmManifestVariable): string[] {
+    const raw = this.blobs.get(`${variable.sessionId}:${variable.name}`) ?? "[]"
+    return JSON.parse(raw) as string[]
+  }
+
+  listVariables(sessionId: string): RlmContextVariable[] {
+    const session = this.sessions.get(sessionId)
+    if (!session) return []
+    return Array.from(session.variables.values())
+  }
+
   deleteSession(sessionId: string): void {
     this.deletedSessions.push(sessionId)
     this.sessions.delete(sessionId)
@@ -136,3 +148,19 @@ export function createToolContext(sessionID: string): ToolContext {
 }
 
 export const dummyClient = {} as PluginInput["client"]
+
+export function bindTestCoordinator(sessionId: string, manager: RlmContextManagerLike, overrides: Partial<Omit<Parameters<typeof coordinator.bind>[1], "manager">> = {}): void {
+  coordinator.bind(sessionId, {
+    manager,
+    rlmSessionId: sessionId,
+    depth: 0,
+    query: "test query",
+    contextVariableName: "context",
+    trusted: true,
+    ...overrides,
+  })
+}
+
+export function unbindTestCoordinator(sessionId: string): void {
+  coordinator.unbind(sessionId)
+}

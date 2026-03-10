@@ -4,6 +4,7 @@ import type { RlmPlanExecutorDeps } from "./plan-deps"
 import type { RlmContextManagerForPlan, RlmPlanToolOptions } from "./plan-tool"
 import type { SyncSubcallResult } from "./subcall-runner"
 import { fillTemplate, itemVariableName, requireBlob, resolveSubcallText } from "./plan-utils"
+import { coordinator } from "../../features/rlm-context/coordinator"
 
 async function resolveRecursiveOutput(
   contextManager: RlmContextManagerForPlan,
@@ -109,6 +110,19 @@ export async function executeMapRlmOperation(
           contextDir: session.contextDir,
           shouldDistill: session.shouldDistill,
         })
+        // Bind child session through coordinator with inherited trust.
+        // Resolve parent binding to get the full RlmContextManager instance.
+        const parentBinding = coordinator.resolve(context.sessionID)
+        if (parentBinding) {
+          coordinator.bind(childSessionID, {
+            manager: parentBinding.manager,
+            rlmSessionId: childSessionID,
+            depth: session.depth + 1,
+            query: session.query,
+            contextVariableName: "item",
+            trusted: true,
+          })
+        }
       },
     })
     try {
@@ -127,6 +141,7 @@ export async function executeMapRlmOperation(
       outputNames.push(outputName)
     } finally {
       if (subcall.sessionID) {
+        coordinator.unbind(subcall.sessionID)
         await contextManager.deleteSession(subcall.sessionID)
         deps.cleanupSyncSubcallSession(subcall.sessionID)
       }

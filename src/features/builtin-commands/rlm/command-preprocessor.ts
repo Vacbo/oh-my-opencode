@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto"
 import type { RlmConfig } from "../../../config/schema/experimental"
 import { RlmContextManager } from "../../rlm-context/manager"
+import { coordinator } from "../../rlm-context/coordinator"
 import { initRlmSession } from "../../../tools/rlm/init-session"
 import { buildRlmSystemPrompt } from "../../../tools/rlm/system-prompt"
 import { log } from "../../../shared"
@@ -90,6 +91,15 @@ export function createRlmCommandPreprocessor(
       content: resolvedContent,
       maxDepth,
       contextDir,
+    })
+
+    coordinator.bind(input.sessionID, {
+      manager: contextManager,
+      rlmSessionId: sessionId,
+      depth: result.depth,
+      query,
+      contextVariableName: result.contextMetadata.contextVariableName,
+      trusted: true,
     })
 
     const systemPrompt = buildRlmSystemPrompt({

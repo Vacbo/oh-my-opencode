@@ -1,6 +1,7 @@
 import type { ToolContext } from "@opencode-ai/plugin/tool"
 import type { RlmBlobVariable, RlmContextVariable, RlmManifestVariable } from "../../features/rlm-context/types"
-import { createRlmSearchTool, type RlmContextManagerForSearch } from "./tools"
+import { coordinator, type RlmContextManagerLike } from "../../features/rlm-context/coordinator"
+import { createRlmSearchTool, type RlmSearchToolOptions } from "./search-tool"
 
 type ExpectChain = {
   toBe: (expected: unknown) => void
@@ -11,14 +12,17 @@ type BunTestModule = {
   describe: (name: string, fn: () => void) => void
   expect: (value: unknown) => ExpectChain
   it: (name: string, fn: () => void | Promise<void>) => void
+  afterEach: (fn: () => void) => void
 }
 
 const bunTestSpecifier = "bun:test"
-const { describe, expect, it } = (await import(bunTestSpecifier)) as BunTestModule
+const { describe, expect, it, afterEach } = (await import(bunTestSpecifier)) as BunTestModule
+
+const SESSION_ID = "ses-test"
 
 function createBlobVariable(name: string, lineCount: number): RlmBlobVariable {
   return {
-    sessionId: "ses-test",
+    sessionId: SESSION_ID,
     name,
     storageKind: "blob",
     semanticType: "context",
@@ -32,7 +36,7 @@ function createBlobVariable(name: string, lineCount: number): RlmBlobVariable {
 
 function createManifestVariable(name: string): RlmManifestVariable {
   return {
-    sessionId: "ses-test",
+    sessionId: SESSION_ID,
     name,
     storageKind: "manifest",
     semanticType: "derived",
@@ -46,16 +50,25 @@ function createManifestVariable(name: string): RlmManifestVariable {
 function createManager(state: {
   variables: Record<string, RlmContextVariable>
   blobContents: Record<string, string>
-}): RlmContextManagerForSearch {
+}): RlmContextManagerLike {
   return {
     getVariableByName: async (_sessionId: string, name: string) => state.variables[name],
     readBlobContent: async (variable: RlmBlobVariable) => state.blobContents[variable.name] ?? "",
+    // Stub methods not used by search tool
+    readManifest: async (_variable: RlmManifestVariable) => [],
+    listVariables: async () => [],
+    initSession: async () => { throw new Error("not used") },
+    getSession: async () => undefined,
+    createBlobVariable: async () => { throw new Error("not used") },
+    createManifestVariable: async () => { throw new Error("not used") },
+    resolveManifestItems: async () => [],
+    deleteSession: async () => {},
   }
 }
 
 function createToolContext(): ToolContext {
   return {
-    sessionID: "ses-test",
+    sessionID: SESSION_ID,
     messageID: "msg-test",
     agent: "test-agent",
     abort: new AbortController().signal,
@@ -64,13 +77,29 @@ function createToolContext(): ToolContext {
   } as ToolContext
 }
 
+function bindManager(manager: RlmContextManagerLike): void {
+  coordinator.bind(SESSION_ID, {
+    manager,
+    rlmSessionId: SESSION_ID,
+    depth: 0,
+    query: "test",
+    contextVariableName: "context",
+    trusted: true,
+  })
+}
+
 describe("createRlmSearchTool", () => {
+  afterEach(() => {
+    coordinator.unbind(SESSION_ID)
+  })
+
   it("supports literal search and returns bounded context around matches", async () => {
     const manager = createManager({
       variables: { context: createBlobVariable("context", 4) },
       blobContents: { context: "alpha\nneedle one\nneedle two\nomega" },
     })
-    const tool = createRlmSearchTool(manager)
+    bindManager(manager)
+    const tool = createRlmSearchTool()
 
     const raw = await tool.execute(
       { variable_name: "context", pattern: "needle", mode: "literal", max_results: 10 },
@@ -95,7 +124,8 @@ describe("createRlmSearchTool", () => {
       variables: { context: createBlobVariable("context", 4) },
       blobContents: { context: "foo_1\nbar\nfoo_2\nbaz" },
     })
-    const tool = createRlmSearchTool(manager)
+    bindManager(manager)
+    const tool = createRlmSearchTool()
 
     const raw = await tool.execute(
       { variable_name: "context", pattern: "^foo_\\d$", mode: "regex" },
@@ -112,7 +142,8 @@ describe("createRlmSearchTool", () => {
       variables: { context: createBlobVariable("context", 5) },
       blobContents: { context: "match\nmatch\nmatch\nnomatch\nnomatch" },
     })
-    const tool = createRlmSearchTool(manager)
+    bindManager(manager)
+    const tool = createRlmSearchTool()
 
     const raw = await tool.execute(
       { variable_name: "context", pattern: "match", mode: "literal", max_results: 2 },
@@ -130,7 +161,8 @@ describe("createRlmSearchTool", () => {
       variables: { chunks: createManifestVariable("chunks") },
       blobContents: {},
     })
-    const tool = createRlmSearchTool(manager)
+    bindManager(manager)
+    const tool = createRlmSearchTool()
 
     const raw = await tool.execute(
       { variable_name: "chunks", pattern: "needle", mode: "literal" },
@@ -148,13 +180,15 @@ describe("createRlmSearchTool", () => {
       variables: { context: createBlobVariable("context", 3) },
       blobContents: { context: "one\ntwo\nthree" },
     })
-    const tool = createRlmSearchTool(manager, {
+    bindManager(manager)
+    const options: RlmSearchToolOptions = {
       regexTimeoutMs: 1,
       now: () => {
         tick += 2
         return tick
       },
-    })
+    }
+    const tool = createRlmSearchTool(options)
 
     const raw = await tool.execute(
       { variable_name: "context", pattern: "one", mode: "regex" },
@@ -170,7 +204,8 @@ describe("createRlmSearchTool", () => {
       variables: { context: createBlobVariable("context", 3) },
       blobContents: { context: "a\nb\nc" },
     })
-    const tool = createRlmSearchTool(manager, { maxRegexLines: 1 })
+    bindManager(manager)
+    const tool = createRlmSearchTool({ maxRegexLines: 1 })
 
     const raw = await tool.execute(
       { variable_name: "context", pattern: "z", mode: "regex" },

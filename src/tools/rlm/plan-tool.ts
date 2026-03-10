@@ -7,6 +7,7 @@ import type {
   RlmSemanticType,
   RlmSessionState,
 } from "../../features/rlm-context/types"
+import { coordinator } from "../../features/rlm-context/coordinator"
 import { executeRlmPlan } from "./plan-executor"
 import type { RlmPlanExecutorDeps } from "./plan-deps"
 import { RlmPlanInputSchema } from "./types"
@@ -77,7 +78,6 @@ function parsePlanArgs(args: unknown):
 }
 
 export function createRlmPlanTool(
-  contextManager: RlmContextManagerForPlan,
   options: RlmPlanToolOptions,
 ): ToolDefinition {
   return tool({
@@ -86,6 +86,13 @@ export function createRlmPlanTool(
       operations: tool.schema.array(tool.schema.unknown()).describe("Ordered list of plan operations"),
     },
     execute: async (args: unknown, context: ToolContext): Promise<string> => {
+      const binding = coordinator.resolve(context.sessionID)
+      if (!binding) {
+        return toJson({ error: "session_not_found" })
+      }
+
+      const contextManager = binding.manager
+
       const coarse = parsePlanArgs(args)
       if (!coarse.ok) {
         return toJson({ error: "invalid_arguments" })

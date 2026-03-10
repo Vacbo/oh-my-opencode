@@ -1,19 +1,26 @@
-import { describe, expect, it, mock } from "bun:test"
+import { describe, expect, it, mock, afterEach } from "bun:test"
 import { createRlmPlanTool } from "./plan-tool"
 import {
   InMemoryRlmManager,
   createSession,
   createToolContext,
   dummyClient,
+  bindTestCoordinator,
+  unbindTestCoordinator,
 } from "./plan-tool.test-helpers"
 
 describe("createRlmPlanTool", () => {
+  afterEach(() => {
+    unbindTestCoordinator("ses-root")
+  })
+
   it("split and select produce manifest variables referencing real blob vars", async () => {
     const manager = new InMemoryRlmManager()
     manager.seedSession(createSession("ses-root", "query", 0, 3))
     manager.createBlobVariable("ses-root", { name: "context", content: "aaabbbccc" })
+    bindTestCoordinator("ses-root", manager)
 
-    const tool = createRlmPlanTool(manager, { client: dummyClient, directory: "/tmp" })
+    const tool = createRlmPlanTool({ client: dummyClient, directory: "/tmp" })
     const raw = await tool.execute({
       operations: [
         { op: "split", variable_name: "context", chunk_size: 3, output_variable: "chunks" },
@@ -33,12 +40,13 @@ describe("createRlmPlanTool", () => {
     manager.createBlobVariable("ses-root", { name: "a", content: "one" })
     manager.createBlobVariable("ses-root", { name: "b", content: "two" })
     manager.createManifestVariable("ses-root", { name: "chunks", variableNames: ["a", "b"] })
+    bindTestCoordinator("ses-root", manager, { depth: 1, query: "Persisted query" })
 
     const prompts: string[] = []
     const initSpy = mock(async () => {
       throw new Error("should not initialize recursive child when downgraded")
     })
-    const tool = createRlmPlanTool(manager, {
+    const tool = createRlmPlanTool({
       client: dummyClient,
       directory: "/tmp",
       deps: {
@@ -66,10 +74,11 @@ describe("createRlmPlanTool", () => {
     manager.createBlobVariable("ses-root", { name: "x", content: "chunk-x" })
     manager.createBlobVariable("ses-root", { name: "y", content: "chunk-y" })
     manager.createManifestVariable("ses-root", { name: "chunks", variableNames: ["x", "y"] })
+    bindTestCoordinator("ses-root", manager, { query: "root query" })
 
     let callCount = 0
     const cleanupCalls: string[] = []
-    const tool = createRlmPlanTool(manager, {
+    const tool = createRlmPlanTool({
       client: dummyClient,
       directory: "/tmp",
       deps: {
@@ -120,7 +129,9 @@ describe("createRlmPlanTool", () => {
   it("final_var halts the plan and returns terminal=false", async () => {
     const manager = new InMemoryRlmManager()
     manager.seedSession(createSession("ses-root", "query", 0, 3))
-    const tool = createRlmPlanTool(manager, { client: dummyClient, directory: "/tmp" })
+    bindTestCoordinator("ses-root", manager)
+
+    const tool = createRlmPlanTool({ client: dummyClient, directory: "/tmp" })
 
     const raw = await tool.execute({
       operations: [
