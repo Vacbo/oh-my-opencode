@@ -1,5 +1,6 @@
 import { describe, expect, it, afterEach } from "bun:test"
 import { createRlmPlanTool } from "./plan-tool"
+import type { RlmConfig } from "../../config/schema/experimental"
 import {
   InMemoryRlmManager,
   createSession,
@@ -9,12 +10,20 @@ import {
   unbindTestCoordinator,
 } from "./plan-tool.test-helpers"
 
+const defaultConfig: RlmConfig = {
+  enabled: true,
+  max_depth: 3,
+  context_storage_dir: ".sisyphus/rlm-contexts",
+  distill_threshold_tokens: 2000,
+  probe_max_lines: 200,
+}
+
 describe("createRlmPlanTool operations", () => {
   it("rejects plans above 50 operations", async () => {
     const manager = new InMemoryRlmManager()
     manager.seedSession(createSession("ses-max-ops", "query", 0, 2))
     bindTestCoordinator("ses-max-ops", manager)
-    const tool = createRlmPlanTool({ client: dummyClient, directory: "/tmp" })
+    const tool = createRlmPlanTool({ client: dummyClient, directory: "/tmp", config: defaultConfig })
 
     const operations = Array.from({ length: 51 }, (_, index) => ({
       op: "write_var" as const,
@@ -35,7 +44,7 @@ describe("createRlmPlanTool operations", () => {
     manager.seedSession(createSession("ses-write", "query", 0, 2))
     bindTestCoordinator("ses-write", manager)
 
-    const tool = createRlmPlanTool({ client: dummyClient, directory: "/tmp" })
+    const tool = createRlmPlanTool({ client: dummyClient, directory: "/tmp", config: defaultConfig })
     const raw = await tool.execute(
       { operations: [{ op: "write_var", variable_name: "note", content: "hello world" }] },
       createToolContext("ses-write"),
@@ -63,6 +72,7 @@ describe("createRlmPlanTool operations", () => {
     const tool = createRlmPlanTool({
       client: dummyClient,
       directory: "/tmp",
+      config: defaultConfig,
       deps: {
         runSyncSubcall: async (input) => {
           prompts.push(input.prompt)
@@ -92,7 +102,7 @@ describe("createRlmPlanTool operations", () => {
     manager.createManifestVariable("ses-concat", { name: "parts", variableNames: ["first", "second"] })
     bindTestCoordinator("ses-concat", manager)
 
-    const tool = createRlmPlanTool({ client: dummyClient, directory: "/tmp" })
+    const tool = createRlmPlanTool({ client: dummyClient, directory: "/tmp", config: defaultConfig })
     await tool.execute(
       {
         operations: [{ op: "concat", variable_name: "parts", output_variable: "joined" }],
@@ -121,6 +131,7 @@ describe("createRlmPlanTool operations", () => {
     const tool = createRlmPlanTool({
       client: dummyClient,
       directory: "/tmp",
+      config: defaultConfig,
       deps: {
         runSyncSubcall: async (input) => {
           prompts.push(input.prompt)

@@ -3,6 +3,7 @@ import { mkdtempSync, rmSync } from "node:fs"
 import { join } from "node:path"
 import { tmpdir } from "node:os"
 import type { ToolContext } from "@opencode-ai/plugin/tool"
+import type { RlmConfig } from "../../config/schema/experimental"
 import { RlmContextManager } from "./manager"
 import { coordinator } from "./coordinator"
 import { createRlmProbeTool } from "../../tools/rlm/probe-tool"
@@ -10,6 +11,14 @@ import { createRlmSearchTool } from "../../tools/rlm/search-tool"
 import { createRlmPlanTool } from "../../tools/rlm/tools"
 import { createRlmFinishTool } from "../../tools/rlm/finish-tool"
 import { initRlmSession } from "../../tools/rlm/init-session"
+
+const defaultConfig: RlmConfig = {
+  enabled: true,
+  max_depth: 3,
+  context_storage_dir: ".sisyphus/rlm-contexts",
+  distill_threshold_tokens: 2000,
+  probe_max_lines: 200,
+}
 
 // Test helpers
 function createToolContext(sessionID: string): ToolContext {
@@ -76,7 +85,7 @@ describe("RLM Integration Tests", () => {
       // Create tools - they should not throw
       const probeTool = createRlmProbeTool()
       const searchTool = createRlmSearchTool()
-      const planTool = createRlmPlanTool({ client: dummyClient, directory: contextDir })
+      const planTool = createRlmPlanTool({ client: dummyClient, directory: contextDir, config: defaultConfig })
       const finishTool = createRlmFinishTool()
 
       // Verify tools exist
@@ -119,21 +128,22 @@ describe("RLM Integration Tests", () => {
       expect(probeData.content).toContain("line1")
 
       // Step 3: Use rlm_plan with split, map_llm, reduce_llm, final_var
-      const planTool = createRlmPlanTool({
-        client: dummyClient,
+const planTool = createRlmPlanTool({
+client: dummyClient,
         directory: contextDir,
-        deps: {
-          runSyncSubcall: async (input) => {
-            // Mock LLM subcall
-            return {
-              ok: true,
-              sessionID: `llm-${Date.now()}`,
-              textOutput: `Summarized: ${input.prompt.substring(0, 20)}...`,
-              messages: [],
-            }
-          },
-        },
-      })
+        config: defaultConfig,
+deps: {
+runSyncSubcall: async (input) => {
+// Mock LLM subcall
+return {
+ok: true,
+sessionID: `llm-${Date.now()}`,
+textOutput: `Summarized: ${input.prompt.substring(0, 20)}...`,
+messages: [],
+}
+},
+},
+})
 
       const planResult = await planTool.execute(
         {
@@ -192,6 +202,7 @@ describe("RLM Integration Tests", () => {
       const planTool = createRlmPlanTool({
         client: dummyClient,
         directory: contextDir,
+        config: defaultConfig,
         deps: {
           initRlmSession: mock(async () => {
             throw new Error("Should not initialize child RLM at depth limit")
@@ -249,6 +260,7 @@ describe("RLM Integration Tests", () => {
       const planTool = createRlmPlanTool({
         client: dummyClient,
         directory: contextDir,
+        config: defaultConfig,
         deps: {
           initRlmSession: async (_ctx, input) => {
             // Verify child session is initialized with correct depth
@@ -431,6 +443,7 @@ describe("RLM Integration Tests", () => {
       const planTool = createRlmPlanTool({
         client: dummyClient,
         directory: contextDir,
+        config: defaultConfig,
       })
 
       const result = await planTool.execute(
@@ -506,6 +519,7 @@ describe("RLM Integration Tests", () => {
       const planTool = createRlmPlanTool({
         client: dummyClient,
         directory: contextDir,
+        config: defaultConfig,
       })
 
       const result = await planTool.execute(

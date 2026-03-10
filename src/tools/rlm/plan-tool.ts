@@ -7,6 +7,7 @@ import type {
   RlmSemanticType,
   RlmSessionState,
 } from "../../features/rlm-context/types"
+import type { RlmConfig } from "../../config/schema/experimental"
 import { coordinator } from "../../features/rlm-context/coordinator"
 import { executeRlmPlan } from "./plan-executor"
 import type { RlmPlanExecutorDeps } from "./plan-deps"
@@ -57,6 +58,7 @@ export interface RlmPlanToolOptions {
   subcallAgent?: string
   subcallModel?: { providerID: string; modelID: string; variant?: string }
   deps?: Partial<RlmPlanExecutorDeps>
+  config: RlmConfig
 }
 
 const toJson = (payload: unknown): string => JSON.stringify(payload)

@@ -101,6 +101,12 @@ const RlmPlanReduceLlmOpSchema = z.object({
   output_variable: z.string(),
 })
 
+const RlmPlanExecOpSchema = z.object({
+  op: z.literal("exec"),
+  code: z.string(),
+  output_variable: z.string().optional(),
+})
+
 const RlmPlanWriteVarOpSchema = z.object({
   op: z.literal("write_var"),
   variable_name: z.string(),
@@ -120,6 +126,7 @@ export const RlmPlanOperationSchema = z.discriminatedUnion("op", [
   RlmPlanConcatOpSchema,
   RlmPlanReduceLlmOpSchema,
   RlmPlanWriteVarOpSchema,
+  RlmPlanExecOpSchema,
   RlmPlanFinalVarOpSchema,
 ])
 

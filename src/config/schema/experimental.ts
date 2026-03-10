@@ -1,8 +1,17 @@
 import { z } from "zod"
 import { DynamicContextPruningConfigSchema } from "./dynamic-context-pruning"
 
+export const DEFAULT_RLM_OUTPUT_THRESHOLD_BYTES = 2048
+export const DEFAULT_RLM_EXEC_TIMEOUT_MS = 30000
+
 const RlmFeedbackConfigSchema = z.object({
   output_threshold_bytes: z.number().int().min(1).default(2048),
+})
+
+const RlmExecConfigSchema = z.object({
+  trusted_only: z.boolean().default(true),
+  timeout_ms: z.number().int().min(1000).default(30000),
+  print_limit_bytes: z.number().int().min(1).default(2048),
 })
 
 export const RlmConfigSchema = z.object({
@@ -11,6 +20,7 @@ export const RlmConfigSchema = z.object({
   context_storage_dir: z.string().default(".sisyphus/rlm-contexts"),
   distill_threshold_tokens: z.number().int().min(100).default(2000),
   feedback: RlmFeedbackConfigSchema.optional(),
+  exec: RlmExecConfigSchema.optional(),
   subcall_model: z.string().optional(),
   probe_max_lines: z.number().int().min(10).default(200),
 })

@@ -1,5 +1,6 @@
 import { describe, expect, it, mock, afterEach } from "bun:test"
 import { createRlmPlanTool } from "./plan-tool"
+import type { RlmConfig } from "../../config/schema/experimental"
 import {
   InMemoryRlmManager,
   createSession,
@@ -8,6 +9,14 @@ import {
   bindTestCoordinator,
   unbindTestCoordinator,
 } from "./plan-tool.test-helpers"
+
+const defaultConfig: RlmConfig = {
+  enabled: true,
+  max_depth: 3,
+  context_storage_dir: ".sisyphus/rlm-contexts",
+  distill_threshold_tokens: 2000,
+  probe_max_lines: 200,
+}
 
 describe("createRlmPlanTool", () => {
   afterEach(() => {
@@ -20,7 +29,7 @@ describe("createRlmPlanTool", () => {
     manager.createBlobVariable("ses-root", { name: "context", content: "aaabbbccc" })
     bindTestCoordinator("ses-root", manager)
 
-    const tool = createRlmPlanTool({ client: dummyClient, directory: "/tmp" })
+    const tool = createRlmPlanTool({ client: dummyClient, directory: "/tmp", config: defaultConfig })
     const raw = await tool.execute({
       operations: [
         { op: "split", variable_name: "context", chunk_size: 3, output_variable: "chunks" },
@@ -49,6 +58,7 @@ describe("createRlmPlanTool", () => {
     const tool = createRlmPlanTool({
       client: dummyClient,
       directory: "/tmp",
+      config: defaultConfig,
       deps: {
         initRlmSession: initSpy,
         runSyncSubcall: async (input) => {
@@ -81,6 +91,7 @@ describe("createRlmPlanTool", () => {
     const tool = createRlmPlanTool({
       client: dummyClient,
       directory: "/tmp",
+      config: defaultConfig,
       deps: {
         initRlmSession: async (_ctx, input) => {
           manager.seedSession(createSession(input.sessionId, input.query, input.depth ?? 0, input.maxDepth))
@@ -131,7 +142,7 @@ describe("createRlmPlanTool", () => {
     manager.seedSession(createSession("ses-root", "query", 0, 3))
     bindTestCoordinator("ses-root", manager)
 
-    const tool = createRlmPlanTool({ client: dummyClient, directory: "/tmp" })
+    const tool = createRlmPlanTool({ client: dummyClient, directory: "/tmp", config: defaultConfig })
 
     const raw = await tool.execute({
       operations: [

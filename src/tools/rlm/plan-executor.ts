@@ -17,6 +17,7 @@ import {
   type RlmPlanExecutorDeps,
 } from "./plan-deps"
 import { requireSession } from "./plan-utils"
+import { executeExecOperation } from "./exec-op"
 
 const toPlanResult = (payload: Record<string, unknown>): string => JSON.stringify(payload)
 
@@ -61,6 +62,10 @@ export async function executeRlmPlan(
       }
       if (operation.op === "write_var") {
         opResults.push({ op: operation.op, ...(await executeWriteVarOperation(contextManager, context, operation)) })
+        continue
+      }
+      if (operation.op === "exec") {
+        opResults.push({ op: operation.op, ...(await executeExecOperation(contextManager, options, context, operation, deps.replBackend, options.config)) })
         continue
       }
       if (operation.op === "final_var") {
