@@ -16,6 +16,8 @@ Disk-backed symbolic variable store for RLM (Recursive Language Model) sessions.
 | `path-guards.ts` | Path safety: `resolveSessionDir()`, `resolveSessionFilePath()`, traversal rejection |
 | `variable-input-parser.ts` | Input normalization: `parseBlobInput()`, `parseManifestInput()` |
 | `index.ts` | Barrel export: `RlmContextManager`, types, path guards |
+| `coordinator.ts` | `RlmSessionCoordinator` singleton: binds sessionID → RlmBinding |
+| `turn-feedback.ts` | Metadata-only feedback: `shouldOffload()`, `offloadOutput()`, `applyFeedback()` |
 
 ## STORE TYPES
 
@@ -245,3 +247,96 @@ Tests in `manager.test.ts` cover:
 - Manifest resolution
 - Session deletion (memory and disk)
 - Path traversal rejection
+
+## COORDINATOR PATTERN
+
+The `RlmSessionCoordinator` is the single source of truth for active RLM sessions. It maps root chat session IDs to `RlmBinding` objects.
+
+### RlmSessionCoordinator
+
+```typescript
+class RlmSessionCoordinator {
+  bind(rootChatSessionId: string, binding: RlmBinding): void
+  resolve(rootChatSessionId: string): RlmBinding | undefined
+  unbind(rootChatSessionId: string): void
+}
+
+export const coordinator = new RlmSessionCoordinator()
+```
+
+### RlmBinding
+
+```typescript
+interface RlmBinding {
+  manager: RlmContextManagerLike    // Context manager for variable operations
+  rlmSessionId: string              // RLM session ID (may differ from chat session)
+  depth: number                     // Current recursion depth (0 = root)
+  query: string                     // Original user query
+  contextVariableName: string       // Name of the pre-injected context variable
+  trusted: boolean                  // Whether exec operations are permitted
+}
+```
+
+All four tools resolve their binding via `coordinator.resolve(context.sessionID)`. Tools return `{ error: "session_not_found" }` when no binding exists.
+
+### Lifecycle
+
+1. **Bind:** `/rlm` command or `initRlmSession()` creates session and binds coordinator
+2. **Resolve:** Every tool call resolves binding from the coordinator
+3. **Unbind:** `rlm_finish`, `FINAL()`, or `FINAL_VAR()` detection unbinds the session
+
+## TURN FEEDBACK
+
+The turn-feedback module enforces metadata-only output at the conversation history boundary.
+
+### `shouldOffload(byteSize, config)`
+
+Returns `true` when `byteSize > config.feedback.output_threshold_bytes` (default: 2048).
+
+### `offloadOutput(content, sessionID, toolName, manager, config)`
+
+Stores content in a hidden blob variable (`__hidden_{toolName}-{uuid}`), returns:
+
+```typescript
+{ ref: "hidden://{suffix}", variableName: "__hidden_{suffix}", preview: content.slice(0, 200) }
+```
+
+### `applyFeedback(output, sessionID, toolName, binding, config)`
+
+Orchestrator function:
+- Returns `output` unchanged if `toolName === "rlm_finish"` (bypass)
+- Returns `output` unchanged if below threshold
+- Calls `offloadOutput()` and returns JSON metadata if above threshold
+
+### `getHiddenVariableName(ref)`
+
+Converts a `hidden://` ref back to the `__hidden_*` variable name for `inspect_ref`.
+
+## VARIABLE TYPES
+
+### Hidden Refs (`__hidden_*` prefix)
+
+Hidden variables store offloaded tool outputs. They are:
+- Created automatically by `offloadOutput()` when output exceeds threshold
+- Named with `__hidden_` prefix followed by `{toolName}-{uuid}`
+- Inspectable via `rlm_probe` `inspect_ref` operation (returns bounded preview only)
+- Stored as blob variables with `semanticType: "scratch"`
+- Invisible to `list_vars` unless the model explicitly requests them
+
+The ref format is `hidden://{suffix}` where suffix maps to `__hidden_{suffix}` variable name.
+
+## CONFIGURATION
+
+RLM configuration lives under `experimental.rlm` in the plugin config:
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `enabled` | `boolean` | `false` | Enable RLM tools |
+| `max_depth` | `number` | `1` | Maximum recursion depth (1–5) |
+| `context_storage_dir` | `string` | `.sisyphus/rlm-contexts` | Base directory for session storage |
+| `distill_threshold_tokens` | `number` | `2000` | Token threshold for distillation |
+| `probe_max_lines` | `number` | `200` | Maximum lines returned by probe operations |
+| `feedback.output_threshold_bytes` | `number` | `2048` | Byte threshold for output offloading |
+| `exec.trusted_only` | `boolean` | `true` | Require trusted binding for exec |
+| `exec.timeout_ms` | `number` | `30000` | Exec operation timeout |
+| `exec.print_limit_bytes` | `number` | `2048` | Print output limit before offloading |

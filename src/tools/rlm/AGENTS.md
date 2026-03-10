@@ -18,6 +18,8 @@ Four public RLM tools (`rlm_probe`, `rlm_search`, `rlm_plan`, `rlm_finish`) plus
 | `search-tool.ts` | `createRlmSearchTool()`: regex/literal search on blobs |
 | `finish-tool.ts` | `createRlmFinishTool()`: session-terminal tool |
 | `plan-executor.ts` | `executeRlmPlan()`: orchestrates 8-op plan execution |
+| `exec-op.ts` | `executeExecOperation()`: trusted REPL execution for `exec` plan op |
+| `repl-runtime.ts` | `createTrustedLocalRlmReplBackend()`: sandboxed exec with getVar/setVar/llm_query/print |
 | `plan-basic-ops.ts` | `split`, `select`, `concat`, `write_var` operations |
 | `plan-subcall-ops.ts` | `map_llm`, `map_rlm`, `reduce_llm` with child session handling |
 | `subcall-runner.ts` | Sync sub-call execution for child RLM/LM sessions |
@@ -41,6 +43,7 @@ Four public RLM tools (`rlm_probe`, `rlm_search`, `rlm_plan`, `rlm_finish`) plus
 | `stats` | `variable_name` | Metadata (size, line count) for blob or manifest |
 | `schema` | `variable_name` | Best-effort structure detection for blob |
 | `list_vars` | (none) | All variables in session with metadata |
+| `inspect_ref` | `ref` | Bounded preview of a hidden (offloaded) variable |
 
 **Behavior:**
 - Content-returning operations bounded by `probe_max_lines` config (default 200)
@@ -103,6 +106,7 @@ Four public RLM tools (`rlm_probe`, `rlm_search`, `rlm_plan`, `rlm_finish`) plus
     | { op: 'concat', variable_name, output_variable }
     | { op: 'reduce_llm', variable_name, prompt, output_variable }
     | { op: 'write_var', variable_name, output_variable }
+    | { op: 'exec', code, output_variable? }
     | { op: 'final_var', variable_name }
   >
 }
@@ -119,6 +123,7 @@ Four public RLM tools (`rlm_probe`, `rlm_search`, `rlm_plan`, `rlm_finish`) plus
 | `concat` | manifest | blob | Join all manifest items into single blob |
 | `reduce_llm` | manifest | blob | Apply LM reduction prompt to manifest, return single blob |
 | `write_var` | literal | blob | Write literal string to new blob variable |
+| `exec` | code string | blob (optional) | Execute sandboxed code with getVar/setVar/llm_query/print |
 | `final_var` | variable_name | — | Plan-local halt; return variable name (not terminal) |
 
 **Execution Rules:**
@@ -380,3 +385,87 @@ Tests cover:
 - Init helper: session creation, context blob creation, metadata return
 - System prompt: REPL-first framing, depth/recursion notes, tool mapping
 - Parser: `FINAL()` and `FINAL_VAR()` precedence, multiline capture
+- Integration: full probe → search → exec → finish flow, metadata-only feedback, trusted mode, FINAL/FINAL_VAR finalization
+
+## ALGORITHM 1 CONTRACTS
+
+These contracts are derived from the RLM paper's Algorithm 1 and govern all tool behavior:
+
+### Session Authority
+
+One coordinator per root chat session. The `RlmSessionCoordinator` singleton maps `rootChatSessionId → RlmBinding`. All four tools resolve their binding via `coordinator.resolve(context.sessionID)`. If no binding exists, tools return `{ error: "session_not_found" }`.
+
+### Metadata-Only Feedback
+
+Tool outputs exceeding `feedback.output_threshold_bytes` (default: 2048) are offloaded to hidden variables (`__hidden_*` prefix). The model receives only metadata (ref, preview, byte size) — never raw content exceeding the threshold. This keeps the conversation history bounded.
+
+**Exception:** `rlm_finish` output bypasses offloading entirely. The final answer is always returned in full.
+
+### Variable-Centric Interaction
+
+Data lives in variables (blobs and manifests). Tools operate on references (variable names), not raw content. The model inspects data through bounded operations (`head`, `tail`, `slice`, `stats`, `inspect_ref`) and transforms it through plan operations (`split`, `map_llm`, `exec`, etc.).
+
+### Finalization
+
+Two finalization paths:
+
+| Path | Mechanism | Scope |
+|------|-----------|-------|
+| `rlm_finish` tool | Direct tool call with `variable_name` or `value` | Session-terminal (`terminal: true`) |
+| `FINAL(value)` / `FINAL_VAR(varname)` | Inline tags in model text, consumed by `final-consumer` hook | Session-terminal (unbinds coordinator) |
+
+Both paths return the complete value to the user. `FINAL_VAR(varname)` resolves the variable before returning.
+
+## APPENDIX C CONTRACTS
+
+These contracts define the model-facing REPL namespace injected into `exec` operations:
+
+| Symbol | Type | Description |
+|--------|------|-------------|
+| `context` | `string` | Pre-injected from the binding's context variable on first exec |
+| `llm_query(prompt, options?)` | `async (string, {title?, max_tokens?}) => string` | Callable LM function for leaf queries via sync subcall |
+| `print(value)` | `(unknown) => void` | Bounded output capture; offloaded if exceeding `print_limit_bytes` |
+| `getVar(name)` | `async (string) => string` | Read blob variable content by name |
+| `setVar(name, value)` | `async (string, string) => void` | Create or overwrite blob variable |
+| `getQuery()` | `() => string` | Access the original user query |
+
+**Trusted mode:** Exec requires `binding.trusted === true` when `exec.trusted_only` is enabled (default). Untrusted bindings receive an error: `"exec requires trusted mode"`.
+
+**Namespace persistence:** Variables set via the `context` global and bare assignments persist across exec calls within the same session.
+
+## TESTING GUIDELINES
+
+### Mocking Patterns
+
+**InMemoryRlmManager** (`plan-tool.test-helpers.ts`): In-memory implementation of `RlmContextManagerLike`. Use for all unit and integration tests that don't need disk I/O.
+
+```typescript
+const manager = new InMemoryRlmManager()
+manager.seedSession(createSession(sessionId, query, depth, maxDepth))
+manager.createBlobVariable(sessionId, { name: "context", content: "..." })
+bindTestCoordinator(sessionId, manager, { trusted: true })
+```
+
+**Mock REPL backend:** Inject via `deps.replBackend` on `createRlmPlanTool()` to bypass real code execution:
+
+```typescript
+const mockBackend: RlmReplBackend = { execute: async () => "mock output" }
+createRlmPlanTool({ ..., deps: { replBackend: mockBackend } })
+```
+
+**Mock subcalls:** Inject `runSyncSubcall` and `cleanupSyncSubcallSession` to avoid real LM calls:
+
+```typescript
+createTrustedLocalRlmReplBackend({
+  runSyncSubcall: async (input) => ({ ok: true, sessionID: "child-1", textOutput: "mock", messages: [] }),
+  cleanupSyncSubcallSession: async () => {},
+})
+```
+
+### Key Verification Points
+
+- **Offloading:** Large outputs (>2KB) become `{ ref, variableName, preview }` — never raw content
+- **Finish bypass:** `rlm_finish` output is never offloaded
+- **Trusted mode:** `exec` with `trusted_only=true` + untrusted binding → error
+- **FINAL tags:** `consumeFinalFromMessage` extracts value and unbinds coordinator
+- **Cleanup:** Always `unbindTestCoordinator` and `clearRlmReplNamespace` in `afterEach`
