@@ -5,6 +5,7 @@ import type { RlmContextManagerForPlan, RlmPlanToolOptions } from "./plan-tool"
 import type { SyncSubcallResult } from "./subcall-runner"
 import { fillTemplate, itemVariableName, requireBlob, resolveSubcallText } from "./plan-utils"
 import { coordinator } from "../../features/rlm-context/coordinator"
+import { executeParallelMapLlm } from "./parallel-map-llm"
 
 async function resolveRecursiveOutput(
   contextManager: RlmContextManagerForPlan,
@@ -37,6 +38,10 @@ export async function executeMapLlmOperation(
   input: { variable_name: string; prompt: string; output_variable: string },
   deps: RlmPlanExecutorDeps,
 ): Promise<{ output_variable: string; mapped_count: number }> {
+  if (options.config?.parallel?.enabled) {
+    return executeParallelMapLlm(contextManager, options, context, session, input, deps)
+  }
+
   const items = await contextManager.resolveManifestItems(context.sessionID, input.variable_name)
   const outputNames: string[] = []
   for (let index = 0; index < items.length; index += 1) {
