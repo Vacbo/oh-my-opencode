@@ -130,7 +130,7 @@ export function createToolRegistry(args: {
         rlm_plan: createRlmPlanTool({
           client: ctx.client,
           directory: ctx.directory,
-          config: pluginConfig.experimental?.rlm ?? { enabled: false, max_depth: 1, context_storage_dir: ".sisyphus/rlm-contexts", distill_threshold_tokens: 2000, probe_max_lines: 200 },
+          config: pluginConfig.experimental?.rlm,
         }),
         rlm_finish: createRlmFinishTool(),
       }

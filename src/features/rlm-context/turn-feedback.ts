@@ -1,8 +1,10 @@
 import { randomUUID } from "node:crypto"
-import type { RlmConfig } from "../../config/schema/experimental"
+import {
+  DEFAULT_RLM_OUTPUT_THRESHOLD_BYTES,
+  type RlmConfig,
+} from "../../config/schema/experimental"
 import type { RlmBinding, RlmContextManagerLike } from "./coordinator"
 
-const DEFAULT_OUTPUT_THRESHOLD_BYTES = 2048
 const MAX_PREVIEW_CHARS = 200
 const HIDDEN_REF_PREFIX = "hidden://"
 const HIDDEN_VARIABLE_PREFIX = "__hidden_"
@@ -14,7 +16,7 @@ export interface OffloadResult {
 }
 
 export function shouldOffload(byteSize: number, config: RlmConfig): boolean {
-  return byteSize > (config.feedback?.output_threshold_bytes ?? DEFAULT_OUTPUT_THRESHOLD_BYTES)
+  return byteSize > (config.feedback?.output_threshold_bytes ?? DEFAULT_RLM_OUTPUT_THRESHOLD_BYTES)
 }
 
 export function getHiddenVariableName(ref: string): string | undefined {

@@ -1,4 +1,5 @@
 import type { ToolContext } from "@opencode-ai/plugin/tool"
+import { RlmConfigSchema } from "../../config/schema/experimental"
 import type { RlmPlanInput } from "./types"
 import type { RlmContextManagerForPlan, RlmPlanToolOptions } from "./plan-tool"
 import {
@@ -16,8 +17,8 @@ import {
   defaultRlmPlanExecutorDeps,
   type RlmPlanExecutorDeps,
 } from "./plan-deps"
-import { requireSession } from "./plan-utils"
 import { executeExecOperation } from "./exec-op"
+import { requireSession } from "./plan-utils"
 
 const toPlanResult = (payload: Record<string, unknown>): string => JSON.stringify(payload)
 
@@ -60,12 +61,22 @@ export async function executeRlmPlan(
         opResults.push({ op: operation.op, ...(await executeReduceLlmOperation(contextManager, options, context, session, operation, deps)) })
         continue
       }
-      if (operation.op === "write_var") {
-        opResults.push({ op: operation.op, ...(await executeWriteVarOperation(contextManager, context, operation)) })
+      if (operation.op === "exec") {
+        opResults.push({
+          op: operation.op,
+          ...(await executeExecOperation(
+            contextManager,
+            options,
+            context,
+            operation,
+            deps.replBackend,
+            options.config ?? RlmConfigSchema.parse({}),
+          )),
+        })
         continue
       }
-      if (operation.op === "exec") {
-        opResults.push({ op: operation.op, ...(await executeExecOperation(contextManager, options, context, operation, deps.replBackend, options.config)) })
+      if (operation.op === "write_var") {
+        opResults.push({ op: operation.op, ...(await executeWriteVarOperation(contextManager, context, operation)) })
         continue
       }
       if (operation.op === "final_var") {

@@ -5,13 +5,13 @@ export const DEFAULT_RLM_OUTPUT_THRESHOLD_BYTES = 2048
 export const DEFAULT_RLM_EXEC_TIMEOUT_MS = 30000
 
 const RlmFeedbackConfigSchema = z.object({
-  output_threshold_bytes: z.number().int().min(1).default(2048),
+  output_threshold_bytes: z.number().int().min(1).default(DEFAULT_RLM_OUTPUT_THRESHOLD_BYTES),
 })
 
 const RlmExecConfigSchema = z.object({
   trusted_only: z.boolean().default(true),
-  timeout_ms: z.number().int().min(1000).default(30000),
-  print_limit_bytes: z.number().int().min(1).default(2048),
+  timeout_ms: z.number().int().min(1000).default(DEFAULT_RLM_EXEC_TIMEOUT_MS),
+  print_limit_bytes: z.number().int().min(1).default(DEFAULT_RLM_OUTPUT_THRESHOLD_BYTES),
 })
 
 const RlmParallelConfigSchema = z.object({

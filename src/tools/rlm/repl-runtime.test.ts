@@ -1,3 +1,4 @@
+/// <reference types="bun-types" />
 import { afterEach, describe, expect, it, mock } from "bun:test"
 import {
   RlmConfigSchema,
@@ -90,7 +91,7 @@ describe("trusted local RLM repl backend", () => {
       'print("0123456789".repeat(4))',
       createContext(manager, createConfig({
         feedback: { output_threshold_bytes: 16 },
-        exec: { trusted_only: true, timeout_ms: 30000, print_limit_bytes: 32 },
+        exec: { trusted_only: true, timeout_ms: 30000, print_limit_bytes: 128 },
       })),
     )
     const parsed = JSON.parse(offloaded) as {

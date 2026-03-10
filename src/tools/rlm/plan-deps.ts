@@ -1,17 +1,20 @@
 import { initRlmSession } from "./init-session"
 import { parseFinalAnswer } from "./parser"
 import {
+  createTrustedLocalRlmReplBackend,
+  type RlmReplBackend,
+} from "./repl-runtime"
+import {
   cleanupSyncSubcallSession,
   runSyncSubcall,
 } from "./subcall-runner"
-import type { RlmReplBackend } from "./repl-runtime"
 
 export interface RlmPlanExecutorDeps {
   runSyncSubcall: typeof runSyncSubcall
   cleanupSyncSubcallSession: typeof cleanupSyncSubcallSession
   initRlmSession: typeof initRlmSession
   parseFinalAnswer: typeof parseFinalAnswer
-  replBackend?: RlmReplBackend
+  replBackend: RlmReplBackend
 }
 
 export const defaultRlmPlanExecutorDeps: RlmPlanExecutorDeps = {
@@ -19,4 +22,5 @@ export const defaultRlmPlanExecutorDeps: RlmPlanExecutorDeps = {
   cleanupSyncSubcallSession,
   initRlmSession,
   parseFinalAnswer,
+  replBackend: createTrustedLocalRlmReplBackend(),
 }

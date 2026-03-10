@@ -1,56 +1,67 @@
 import type { ToolContext } from "@opencode-ai/plugin/tool"
 import type { RlmConfig } from "../../config/schema/experimental"
-import { coordinator } from "../../features/rlm-context/coordinator"
 import type { RlmContextManagerForPlan, RlmPlanToolOptions } from "./plan-tool"
-import {
-  createTrustedLocalRlmReplBackend,
-  type RlmReplBackend,
-} from "./repl-runtime"
+import { assertExecTrusted } from "./repl-exec-config"
+import { readBlobContent, upsertBlobVariable } from "./repl-variable-bridge"
+import type { RlmReplBackend } from "./repl-runtime"
 
-export interface ExecOperationResult {
-  executed: true
-  output_variable?: string
-  output?: string
+type OffloadedOutput = {
+  ref: string
+  variableName: string
 }
 
 export async function executeExecOperation(
   contextManager: RlmContextManagerForPlan,
-  _options: RlmPlanToolOptions,
+  options: RlmPlanToolOptions,
   context: ToolContext,
   operation: { op: "exec"; code: string; output_variable?: string },
-  backend: RlmReplBackend | undefined,
+  backend: RlmReplBackend,
   config: RlmConfig,
-): Promise<ExecOperationResult> {
-  const binding = coordinator.resolve(context.sessionID)
-  if (!binding) {
-    throw new Error("session_not_found")
-  }
-
-  const execBackend = backend ?? createTrustedLocalRlmReplBackend()
-
-  const replContext = {
+): Promise<{ executed: true; output_variable?: string; output_ref?: string }> {
+  const binding = assertExecTrusted(context.sessionID, config)
+  const output = await backend.execute(operation.code, {
     sessionID: context.sessionID,
     query: binding.query,
     manager: binding.manager,
     toolContext: context,
-    client: _options.client,
-    directory: _options.directory,
+    client: options.client,
+    directory: options.directory,
+    subcallAgent: options.subcallAgent,
+    subcallModel: options.subcallModel,
     config,
-  }
-
-  const output = await execBackend.execute(operation.code, replContext)
+  })
+  const offloaded = parseOffloadedOutput(output)
 
   if (operation.output_variable) {
-    await contextManager.createBlobVariable(
+    const storedOutput = offloaded
+      ? await readBlobContent(contextManager, context.sessionID, offloaded.variableName)
+      : output
+    await upsertBlobVariable(
+      contextManager,
       context.sessionID,
-      { name: operation.output_variable, content: output },
-      { semanticType: "scratch" },
+      operation.output_variable,
+      storedOutput,
     )
   }
 
   return {
     executed: true,
-    output_variable: operation.output_variable,
-    output: operation.output_variable ? undefined : output,
+    ...(operation.output_variable ? { output_variable: operation.output_variable } : {}),
+    ...(offloaded ? { output_ref: offloaded.ref } : {}),
   }
+}
+
+function parseOffloadedOutput(output: string): OffloadedOutput | undefined {
+  try {
+    const parsed = JSON.parse(output) as Record<string, unknown>
+    if (typeof parsed.ref === "string" && typeof parsed.variableName === "string") {
+      return {
+        ref: parsed.ref,
+        variableName: parsed.variableName,
+      }
+    }
+  } catch (_error) {
+    return undefined
+  }
+  return undefined
 }

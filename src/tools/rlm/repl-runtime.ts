@@ -1,20 +1,40 @@
+import type { PluginInput } from "@opencode-ai/plugin"
 import type { ToolContext } from "@opencode-ai/plugin/tool"
 import type { RlmConfig } from "../../config/schema/experimental"
 import type { RlmContextManagerLike } from "../../features/rlm-context/coordinator"
 import { applyFeedback } from "../../features/rlm-context/turn-feedback"
+import { assertExecTrusted, resolveRlmExecConfig } from "./repl-exec-config"
+import {
+  formatPrintedValue,
+  readBlobContent,
+  toStoredContent,
+  truncatePrintedOutput,
+  upsertBlobVariable,
+} from "./repl-variable-bridge"
 import {
   cleanupSyncSubcallSession,
   runSyncSubcall,
-  type SyncSubcallInput,
 } from "./subcall-runner"
+
+type RlmSubcallModel = { providerID: string; modelID: string; variant?: string }
+type RlmLlmQueryOptions = { title?: string }
+type AsyncFunctionConstructor = new (
+  ...args: string[]
+) => (scope: Record<string, unknown>) => Promise<unknown>
+
+const AsyncFunction = Object.getPrototypeOf(async function noop() {}).constructor as AsyncFunctionConstructor
+const sessionNamespaces = new Map<string, Record<string, unknown>>()
+const helperNames = new Set(["getQuery", "getVar", "llm_query", "print", "setVar"])
 
 export interface RlmReplContext {
   sessionID: string
   query: string
   manager: RlmContextManagerLike
   toolContext: ToolContext
-  client: unknown
+  client: PluginInput["client"]
   directory: string
+  subcallAgent?: string
+  subcallModel?: RlmSubcallModel
   config: RlmConfig
 }
 
@@ -23,170 +43,131 @@ export interface RlmReplBackend {
 }
 
 interface RlmReplBackendDeps {
-  runSyncSubcall: typeof runSyncSubcall
   cleanupSyncSubcallSession: typeof cleanupSyncSubcallSession
+  runSyncSubcall: typeof runSyncSubcall
 }
 
-const DEFAULT_EXEC_TIMEOUT_MS = 30000
-
-const namespaces = new Map<string, Record<string, unknown>>()
-const initializedSessions = new Set<string>()
-
-function getOrCreateNamespace(sessionID: string): Record<string, unknown> {
-  let ns = namespaces.get(sessionID)
-  if (!ns) {
-    ns = {}
-    namespaces.set(sessionID, ns)
+export function clearRlmReplNamespace(sessionID?: string): void {
+  if (sessionID) {
+    sessionNamespaces.delete(sessionID)
+    return
   }
-  return ns
-}
-
-export function clearRlmReplNamespace(sessionID: string): void {
-  namespaces.delete(sessionID)
-  initializedSessions.delete(sessionID)
+  sessionNamespaces.clear()
 }
 
 export function createTrustedLocalRlmReplBackend(
   deps: Partial<RlmReplBackendDeps> = {},
 ): RlmReplBackend {
-  const runSyncSubcallFn = deps.runSyncSubcall ?? runSyncSubcall
-  const cleanupSyncSubcallSessionFn =
-    deps.cleanupSyncSubcallSession ?? cleanupSyncSubcallSession
+  const runtimeDeps: RlmReplBackendDeps = {
+    cleanupSyncSubcallSession,
+    runSyncSubcall,
+    ...deps,
+  }
 
   return {
-    async execute(code: string, context: RlmReplContext): Promise<string> {
-      const execConfig = context.config.exec ?? {
-        trusted_only: true,
-        timeout_ms: DEFAULT_EXEC_TIMEOUT_MS,
-        print_limit_bytes: context.config.feedback?.output_threshold_bytes ?? 2048,
-      }
-
-      const timeoutMs = execConfig.timeout_ms ?? DEFAULT_EXEC_TIMEOUT_MS
-      const printLimitBytes =
-        execConfig.print_limit_bytes ??
-        context.config.feedback?.output_threshold_bytes ??
-        2048
-
-      const { coordinator } = await import(
-        "../../features/rlm-context/coordinator"
-      )
-      const binding = coordinator.resolve(context.sessionID)
-
-      if (!binding) {
-        throw new Error("session_not_found")
-      }
-
-      if (execConfig.trusted_only && !binding.trusted) {
-        throw new Error("exec requires trusted mode")
-      }
-
-      const ns = getOrCreateNamespace(context.sessionID)
-
-      if (!initializedSessions.has(context.sessionID)) {
-        const contextVar = await context.manager.getVariableByName(
+    execute: async (code, context) => {
+      const binding = assertExecTrusted(context.sessionID, context.config)
+      const execConfig = resolveRlmExecConfig(context.config)
+      const namespace = sessionNamespaces.get(context.sessionID) ?? {}
+      if (!("context" in namespace)) {
+        namespace.context = await readBlobContent(
+          context.manager,
           context.sessionID,
           binding.contextVariableName,
         )
-        if (contextVar && contextVar.storageKind === "blob") {
-          const content = await context.manager.readBlobContent(contextVar)
-          ns.context = content
-        }
-        initializedSessions.add(context.sessionID)
       }
 
-      const printBuffer: string[] = []
-
-      const globals = {
-        getVar: async (name: string): Promise<string> => {
-          const variable = await context.manager.getVariableByName(
-            context.sessionID,
-            name,
-          )
-          if (!variable) {
-            throw new Error(`variable_not_found: ${name}`)
-          }
-          if (variable.storageKind !== "blob") {
-            throw new Error(`invalid_storage_kind: ${name} is not a blob`)
-          }
-          return context.manager.readBlobContent(variable)
-        },
-        setVar: async (name: string, value: string): Promise<void> => {
-          await context.manager.createBlobVariable(
-            context.sessionID,
-            { name, content: value },
-            { semanticType: "scratch" },
-          )
-        },
-        llm_query: async (
-          prompt: string,
-          options?: { title?: string; max_tokens?: number },
-        ): Promise<string> => {
-          const input: SyncSubcallInput = {
-            client: context.client as SyncSubcallInput["client"],
-            parentSessionID: context.sessionID,
-            defaultDirectory: context.directory,
-            title: options?.title ?? "RLM leaf query",
-            prompt,
-            agent: "sisyphus",
-            tools: {
-              rlm_finish: false,
-              rlm_plan: false,
-              rlm_probe: false,
-              rlm_search: false,
-            },
-            abortSignal: context.toolContext.abort,
-          }
-
-          const result = await runSyncSubcallFn(input)
-
-          if (!result.ok) {
-            throw new Error(`llm_query failed: ${result.error}`)
-          }
-
-          if (result.sessionID) {
-            await cleanupSyncSubcallSessionFn(result.sessionID)
-          }
-
-          return result.textOutput
-        },
-        print: (value: unknown): void => {
-          printBuffer.push(String(value))
-        },
-        getQuery: (): string => context.query,
-        context: ns.context,
-      }
-
-      const fullCode = `
-        const { getVar, setVar, llm_query, print, getQuery, context } = __rlm_injected__;
-        ${code}
-      `
-      const AsyncFunction = Object.getPrototypeOf(async () => {}).constructor
-      const fn = new AsyncFunction("__rlm_injected__", fullCode)
-
-      const executePromise = fn(globals)
-      const timeoutPromise = new Promise<never>((_, reject) => {
-        setTimeout(() => reject(new Error("exec_timeout")), timeoutMs)
-      })
-
-      await Promise.race([executePromise, timeoutPromise])
-
-      let output = printBuffer.join("\n")
-      if (output && !output.endsWith("\n")) {
-        output += "\n"
-      }
-
-      const outputBytes = Buffer.byteLength(output, "utf8")
-      if (outputBytes > printLimitBytes) {
-        output = await applyFeedback(
-          output,
+      let printed = ""
+      const scope: Record<string, unknown> = { ...namespace }
+      scope.getQuery = (): string => binding.query
+      scope.getVar = async (name: string): Promise<string> =>
+        readBlobContent(context.manager, context.sessionID, name)
+      scope.setVar = async (name: string, value: unknown): Promise<void> => {
+        await upsertBlobVariable(
+          context.manager,
           context.sessionID,
-          "rlm_plan",
-          binding,
-          context.config,
+          name,
+          toStoredContent(value),
+        )
+        scope[name] = value
+      }
+      scope.llm_query = async (prompt: string, options?: RlmLlmQueryOptions): Promise<string> => {
+        const subcall = await runtimeDeps.runSyncSubcall({
+          client: context.client,
+          parentSessionID: context.sessionID,
+          defaultDirectory: context.directory,
+          title: options?.title ?? "RLM llm_query",
+          prompt,
+          agent: context.subcallAgent ?? context.toolContext.agent,
+          model: context.subcallModel,
+          tools: { rlm_finish: false, rlm_plan: false, rlm_probe: false, rlm_search: false },
+          abortSignal: context.toolContext.abort,
+        })
+        try {
+          if (!subcall.ok) {
+            throw new Error(subcall.error)
+          }
+          return subcall.terminalPayload?.final_answer ?? subcall.textOutput
+        } finally {
+          if (subcall.sessionID) {
+            runtimeDeps.cleanupSyncSubcallSession(subcall.sessionID)
+          }
+        }
+      }
+      scope.print = (value: unknown): void => {
+        printed = truncatePrintedOutput(
+          printed,
+          `${formatPrintedValue(value)}\n`,
+          execConfig.print_limit_bytes,
         )
       }
 
-      return output
+      const scopeProxy = new Proxy(scope, {
+        deleteProperty: (target, property) => Reflect.deleteProperty(target, property),
+        get: (target, property, receiver) => {
+          if (property === Symbol.unscopables) {
+            return undefined
+          }
+          if (Reflect.has(target, property)) {
+            return Reflect.get(target, property, receiver)
+          }
+          return Reflect.get(globalThis, property)
+        },
+        has: () => true,
+        set: (target, property, value) => Reflect.set(target, property, value),
+      })
+
+      await Promise.race([
+        new AsyncFunction("scope", `with (scope) { ${code} }`)(scopeProxy),
+        timeoutAfter(execConfig.timeout_ms),
+      ])
+
+      syncNamespace(context.sessionID, namespace, scope)
+      return applyFeedback(printed, context.sessionID, "rlm_plan", binding, context.config)
     },
   }
+}
+
+function syncNamespace(
+  sessionID: string,
+  namespace: Record<string, unknown>,
+  scope: Record<string, unknown>,
+): void {
+  for (const key of Object.keys(namespace)) {
+    if (!(key in scope) && !helperNames.has(key)) {
+      delete namespace[key]
+    }
+  }
+  for (const [key, value] of Object.entries(scope)) {
+    if (!helperNames.has(key)) {
+      namespace[key] = value
+    }
+  }
+  sessionNamespaces.set(sessionID, namespace)
+}
+
+function timeoutAfter(timeoutMs: number): Promise<never> {
+  return new Promise((_, reject) => {
+    setTimeout(() => reject(new Error(`exec timed out after ${timeoutMs}ms`)), timeoutMs)
+  })
 }

@@ -58,7 +58,7 @@ export interface RlmPlanToolOptions {
   subcallAgent?: string
   subcallModel?: { providerID: string; modelID: string; variant?: string }
   deps?: Partial<RlmPlanExecutorDeps>
-  config: RlmConfig
+  config?: RlmConfig
 }
 
 const toJson = (payload: unknown): string => JSON.stringify(payload)
@@ -83,7 +83,7 @@ export function createRlmPlanTool(
   options: RlmPlanToolOptions,
 ): ToolDefinition {
   return tool({
-    description: "Execute a manifest-aware RLM plan with split/select/map/concat/reduce/write/final operations.",
+    description: "Execute a manifest-aware RLM plan with split/select/map/concat/reduce/exec/write/final operations.",
     args: {
       operations: tool.schema.array(tool.schema.unknown()).describe("Ordered list of plan operations"),
     },
