@@ -86,11 +86,13 @@ Your exec code is **JavaScript**. The runtime injects these globals into the REP
 
 | Global | Signature | Purpose |
 |--------|-----------|---------|
-| \`getVar(name)\` | \`(name: string) => string\` | Read a stored variable by name |
-| \`setVar(name, value)\` | \`(name: string, value: string) => void\` | Store or overwrite a variable |
+| \`getVar(name)\` | \`(name: string) => Promise<string>\` | Read a stored variable by name |
+| \`setVar(name, value)\` | \`(name: string, value: string) => Promise<void>\` | Store or overwrite a variable |
 | \`llm_query(prompt, options?)\` | \`(prompt: string, options?: { model?: string }) => Promise<string>\` | Call a language model as a leaf sub-call |
 | \`print(value)\` | \`(value: unknown) => void\` | Inspect a value (bounded, truncated to ~${printLimitFormatted}) |
 | \`getQuery()\` | \`() => string\` | Retrieve the original user query |
+
+**Note:** \`getVar\` and \`setVar\` are async functions. Your exec code runs in an async context, so you can use \`await\` with them.
 
 ## Mental Model: REPL-First Interaction
 
@@ -179,7 +181,7 @@ Search blob variables for patterns.
 
 Execute a sequence of transformations on variables.
 
-**Operations (8 total):**
+**Operations (9 total):**
 - \`split\`: Blob → Manifest (split blob into chunks, create a manifest of chunk variables)
 - \`select\`: Manifest → Manifest (filter/reorder manifest items)
 - \`map_llm\`: Manifest → Manifest (apply a plain LM to each item, store results)
@@ -188,6 +190,7 @@ Execute a sequence of transformations on variables.
 - \`reduce_llm\`: Manifest → Blob (summarize/reduce manifest items with a plain LM)
 - \`write_var\`: Literal → Blob (store a literal value as a blob variable)
 - \`final_var\`: Halt the plan and return a result variable name (plan-local only)
+- \`exec\`: Execute JavaScript code in the REPL namespace with access to \`getVar\`, \`setVar\`, \`llm_query\`, \`print\`, \`getQuery\`
 
 **Template Expansion:**
 - \`{{query}}\` expands to your original task (\`getQuery()\`).
@@ -234,6 +237,31 @@ End the session and return a final answer. Equivalent to \`FINAL()\` / \`FINAL_V
 \`\`\`json
 {
   "variable_name": "final_summary"
+}
+\`\`\`
+
+### 5. \`exec\` — Execute JavaScript Code
+
+Execute arbitrary JavaScript code in the REPL namespace with access to all globals.
+
+**Input:**
+- \`code\`: JavaScript code string to execute
+
+**Globals Available:**
+- \`getVar(name)\` — async function to read a variable
+- \`setVar(name, value)\` — async function to store a variable
+- \`llm_query(prompt, options?)\` — async function to call a language model
+- \`print(value)\` — function to inspect a value
+- \`getQuery()\` — function to retrieve the original query
+
+**Returns:** The return value of the code (or undefined if no explicit return).
+
+**Important:** Your code runs in an async context, so you can use \`await\` with async functions.
+
+**Example:**
+\`\`\`json
+{
+  "code": "const data = await getVar('context'); const summary = await llm_query('Summarize: ' + data); await setVar('summary', summary); return summary;"
 }
 \`\`\`
 

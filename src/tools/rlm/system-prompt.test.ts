@@ -64,6 +64,31 @@ describe("buildRlmSystemPrompt", () => {
         expect(prompt).toContain("print(value)")
         expect(prompt).toContain("getQuery()")
       })
+
+      it("shows async signatures for getVar and setVar", () => {
+        const prompt = getCanonicalPrompt()
+        expect(prompt).toContain("(name: string) => Promise<string>")
+        expect(prompt).toContain("(name: string, value: string) => Promise<void>")
+        expect(prompt).toContain("async context")
+        expect(prompt).toContain("await")
+      })
+
+      it("lists exec as the 9th operation", () => {
+        const prompt = getCanonicalPrompt()
+        expect(prompt).toContain("Operations (9 total)")
+        expect(prompt).toContain("`exec`")
+        expect(prompt).toContain("Execute JavaScript code")
+      })
+
+      it("describes exec operation with all available globals", () => {
+        const prompt = getCanonicalPrompt()
+        expect(prompt).toContain("exec")
+        expect(prompt).toContain("getVar")
+        expect(prompt).toContain("setVar")
+        expect(prompt).toContain("llm_query")
+        expect(prompt).toContain("print")
+        expect(prompt).toContain("getQuery")
+      })
     })
 
     describe("#when custom context variable name is used", () => {
