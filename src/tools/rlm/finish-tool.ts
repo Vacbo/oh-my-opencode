@@ -1,11 +1,8 @@
 import { tool, type ToolDefinition } from "@opencode-ai/plugin/tool"
 import type { RlmBlobVariable } from "../../features/rlm-context/types"
 import { coordinator } from "../../features/rlm-context/coordinator"
+import { rlmError, toErrorJson, RlmErrorCode } from "../../features/rlm-context/error-codes"
 import { RlmFinishInputSchema } from "./types"
-
-function jsonError(error: string, details: Record<string, unknown> = {}): string {
-  return JSON.stringify({ error, ...details })
-}
 
 export function createRlmFinishTool(): ToolDefinition {
   return tool({
@@ -18,23 +15,23 @@ export function createRlmFinishTool(): ToolDefinition {
       const { sessionID: chatSessionId } = context
       const binding = coordinator.resolve(chatSessionId)
       if (!binding) {
-        return jsonError("session_not_found", { sessionID: chatSessionId })
+        return JSON.stringify(toErrorJson(rlmError(RlmErrorCode.SESSION_NOT_FOUND, undefined, { sessionID: chatSessionId })))
       }
 
       const contextManager = binding.manager
 
       const parsed = RlmFinishInputSchema.safeParse(args)
       if (!parsed.success) {
-        return jsonError("invalid_arguments")
+        return JSON.stringify(toErrorJson(rlmError(RlmErrorCode.INVALID_INPUT)))
       }
 
       if (parsed.data.variable_name !== undefined) {
         const variable = await contextManager.getVariableByName(binding.rlmSessionId, parsed.data.variable_name)
         if (!variable) {
-          return jsonError("variable_not_found", { variable_name: parsed.data.variable_name })
+          return JSON.stringify(toErrorJson(rlmError(RlmErrorCode.VARIABLE_NOT_FOUND, undefined, { variable_name: parsed.data.variable_name })))
         }
         if (variable.storageKind === "manifest") {
-          return jsonError("manifest_not_allowed", { variable_name: parsed.data.variable_name })
+          return JSON.stringify(toErrorJson(rlmError(RlmErrorCode.MANIFEST_REJECTED, undefined, { variable_name: parsed.data.variable_name })))
         }
 
         const content = await contextManager.readBlobContent(variable as RlmBlobVariable)

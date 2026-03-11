@@ -168,9 +168,10 @@ describe("createRlmSearchTool", () => {
       { variable_name: "chunks", pattern: "needle", mode: "literal" },
       createToolContext(),
     )
-    const result = JSON.parse(raw) as { error: string; storage_kind: string }
+    const result = JSON.parse(raw) as { error: string; code: string; storage_kind: string }
 
     expect(result.error).toBe("unsupported_variable_kind")
+    expect(result.code).toBe("UNSUPPORTED_VARIABLE_KIND")
     expect(result.storage_kind).toBe("manifest")
   })
 
@@ -194,9 +195,10 @@ describe("createRlmSearchTool", () => {
       { variable_name: "context", pattern: "one", mode: "regex" },
       createToolContext(),
     )
-    const result = JSON.parse(raw) as { error: string }
+    const result = JSON.parse(raw) as { error: string; code: string }
 
     expect(result.error).toBe("regex_timeout")
+    expect(result.code).toBe("REGEX_TIMEOUT")
   })
 
   it("returns guard failure JSON when regex line-scan guard is exceeded", async () => {
@@ -211,9 +213,10 @@ describe("createRlmSearchTool", () => {
       { variable_name: "context", pattern: "z", mode: "regex" },
       createToolContext(),
     )
-    const result = JSON.parse(raw) as { error: string; reason: string }
+    const result = JSON.parse(raw) as { error: string; code: string; reason: string }
 
     expect(result.error).toBe("regex_guard_failure")
+    expect(result.code).toBe("REGEX_GUARD_FAILURE")
     expect(result.reason).toBe("line_limit_exceeded")
   })
 })

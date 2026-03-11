@@ -1,6 +1,7 @@
 import type { ToolContext } from "@opencode-ai/plugin/tool"
 import { RlmConfigSchema } from "../../config/schema/experimental"
 import { coordinator } from "../../features/rlm-context/coordinator"
+import { rlmError, toErrorJson, RlmErrorCode } from "../../features/rlm-context/error-codes"
 import type { RlmPlanInput } from "./types"
 import type { RlmContextManagerForPlan, RlmPlanToolOptions } from "./plan-tool"
 import {
@@ -33,7 +34,7 @@ export async function executeRlmPlan(
   const deps: RlmPlanExecutorDeps = { ...defaultRlmPlanExecutorDeps, ...depsInput }
   const binding = coordinator.resolve(context.sessionID)
   if (!binding) {
-    return toPlanResult({ error: "session_not_found" })
+    return toPlanResult(toErrorJson(rlmError(RlmErrorCode.SESSION_NOT_FOUND)))
   }
   const rlmSessionId = binding.rlmSessionId
   const chatSessionId = context.sessionID
@@ -115,12 +116,10 @@ export async function executeRlmPlan(
       const errorMsg = error instanceof Error ? error.message : String(error)
       tracer?.endSpan(opSpan!.spanId, "error", errorMsg)
       tracer?.endSpan(planSpan!.spanId, "error", errorMsg)
-      return toPlanResult({
-        error: "plan_execution_error",
+      return toPlanResult(toErrorJson(rlmError(RlmErrorCode.PLAN_OP_FAILED, errorMsg, {
         op_index: opIndex,
         op: operation.op,
-        message: errorMsg,
-      })
+      })))
     }
   }
 

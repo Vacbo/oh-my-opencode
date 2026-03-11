@@ -136,6 +136,7 @@ describe("createRlmFinishTool", () => {
     const result = JSON.parse(raw)
 
     expect(result.error).toBe("invalid_arguments")
+    expect(result.code).toBe("INVALID_INPUT")
   })
 
   it("#when neither variable_name nor value is provided #then returns invalid_arguments", async () => {
@@ -146,6 +147,7 @@ describe("createRlmFinishTool", () => {
     const result = JSON.parse(raw)
 
     expect(result.error).toBe("invalid_arguments")
+    expect(result.code).toBe("INVALID_INPUT")
   })
 
   it("#when variable does not exist #then returns variable_not_found", async () => {
@@ -156,6 +158,7 @@ describe("createRlmFinishTool", () => {
     const result = JSON.parse(raw)
 
     expect(result.error).toBe("variable_not_found")
+    expect(result.code).toBe("VARIABLE_NOT_FOUND")
   })
 
   it("#when variable is a manifest #then rejects manifest as finish target", async () => {
@@ -169,5 +172,6 @@ describe("createRlmFinishTool", () => {
     const result = JSON.parse(raw)
 
     expect(result.error).toBe("manifest_not_allowed")
+    expect(result.code).toBe("MANIFEST_REJECTED")
   })
 })

@@ -2,6 +2,7 @@ import { tool, type ToolDefinition } from "@opencode-ai/plugin/tool"
 import type { RlmConfig } from "../../config/schema/experimental"
 import { getHiddenVariableName } from "../../features/rlm-context/turn-feedback"
 import { coordinator } from "../../features/rlm-context/coordinator"
+import { rlmError, toErrorJson, RlmErrorCode } from "../../features/rlm-context/error-codes"
 import { detectSchema } from "./schema-detector"
 import { RlmProbeInputSchema } from "./types"
 
@@ -29,14 +30,14 @@ export function createRlmProbeTool(
       const { sessionID: chatSessionId } = context
       const binding = coordinator.resolve(chatSessionId)
       if (!binding) {
-        return jsonError("session_not_found", { sessionID: chatSessionId })
+        return JSON.stringify(toErrorJson(rlmError(RlmErrorCode.SESSION_NOT_FOUND, undefined, { sessionID: chatSessionId })))
       }
 
       const contextManager = binding.manager
 
       const parsed = RlmProbeInputSchema.safeParse(args)
       if (!parsed.success) {
-        return jsonError("invalid_arguments")
+        return JSON.stringify(toErrorJson(rlmError(RlmErrorCode.INVALID_INPUT)))
       }
 
       const input = parsed.data
@@ -78,18 +79,18 @@ export function createRlmProbeTool(
       if (input.operation === "inspect_ref") {
         const variableName = getHiddenVariableName(input.ref)
         if (!variableName) {
-          return jsonError("invalid_ref", { ref: input.ref })
+          return JSON.stringify(toErrorJson(rlmError(RlmErrorCode.INVALID_REF, undefined, { ref: input.ref })))
         }
 
         const variable = await contextManager.getVariableByName(sessionId, variableName)
         if (!variable) {
-          return jsonError("variable_not_found", { ref: input.ref, variable_name: variableName })
+          return JSON.stringify(toErrorJson(rlmError(RlmErrorCode.VARIABLE_NOT_FOUND, undefined, { ref: input.ref, variable_name: variableName })))
         }
         if (variable.storageKind !== "blob") {
-          return jsonError("invalid_storage_kind", {
+          return JSON.stringify(toErrorJson(rlmError(RlmErrorCode.INVALID_STORAGE_KIND, undefined, {
             expected_storage_kind: "blob",
             actual_storage_kind: variable.storageKind,
-          })
+          })))
         }
 
         const content = await contextManager.readBlobContent(variable)
@@ -103,7 +104,7 @@ export function createRlmProbeTool(
 
       const variable = await contextManager.getVariableByName(sessionId, input.variable_name)
       if (!variable) {
-        return jsonError("variable_not_found", { variable_name: input.variable_name })
+        return JSON.stringify(toErrorJson(rlmError(RlmErrorCode.VARIABLE_NOT_FOUND, undefined, { variable_name: input.variable_name })))
       }
 
       if (input.operation === "stats") {
@@ -131,10 +132,10 @@ export function createRlmProbeTool(
       }
 
       if (variable.storageKind !== "blob") {
-        return jsonError("invalid_storage_kind", {
+        return JSON.stringify(toErrorJson(rlmError(RlmErrorCode.INVALID_STORAGE_KIND, undefined, {
           expected_storage_kind: "blob",
           actual_storage_kind: variable.storageKind,
-        })
+        })))
       }
 
       const lines = toLines(await contextManager.readBlobContent(variable))
@@ -150,7 +151,7 @@ export function createRlmProbeTool(
 
       if (input.operation === "slice") {
         if (input.end < input.start) {
-          return jsonError("invalid_range", { start: input.start, end: input.end })
+          return JSON.stringify(toErrorJson(rlmError(RlmErrorCode.INVALID_RANGE, undefined, { start: input.start, end: input.end })))
         }
         const boundedEnd = Math.min(input.end, input.start + probeMaxLines - 1)
         const range = lines.slice(input.start, boundedEnd + 1)
@@ -183,8 +184,4 @@ function toLines(content: string): string[] {
 function clampRequestedLines(lines: number | undefined, probeMaxLines: number): number {
   const requested = lines ?? DEFAULT_VIEW_LINES
   return Math.max(1, Math.min(requested, probeMaxLines))
-}
-
-function jsonError(error: string, details: Record<string, unknown> = {}): string {
-  return JSON.stringify({ error, ...details })
 }

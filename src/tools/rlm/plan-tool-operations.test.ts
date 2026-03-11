@@ -36,8 +36,9 @@ describe("createRlmPlanTool operations", () => {
 
     const raw = await tool.execute({ operations }, createToolContext(sessionId))
     unbindTestCoordinator(sessionId)
-    const parsed = JSON.parse(raw) as { error: string; max_operations: number; operation_count: number }
+    const parsed = JSON.parse(raw) as { error: string; code: string; max_operations: number; operation_count: number }
     expect(parsed.error).toBe("too_many_operations")
+    expect(parsed.code).toBe("TOO_MANY_OPERATIONS")
     expect(parsed.max_operations).toBe(50)
     expect(parsed.operation_count).toBe(51)
   })

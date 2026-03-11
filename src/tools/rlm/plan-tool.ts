@@ -10,6 +10,7 @@ import type {
 import type { RlmConfig } from "../../config/schema/experimental"
 import { coordinator } from "../../features/rlm-context/coordinator"
 import { createTracer } from "../../features/rlm-context/tracer"
+import { rlmError, toErrorJson, RlmErrorCode } from "../../features/rlm-context/error-codes"
 import { executeRlmPlan } from "./plan-executor"
 import type { RlmPlanExecutorDeps } from "./plan-deps"
 import { RlmPlanInputSchema } from "./types"
@@ -91,7 +92,7 @@ export function createRlmPlanTool(
     execute: async (args: unknown, context: ToolContext): Promise<string> => {
       const binding = coordinator.resolve(context.sessionID)
       if (!binding) {
-        return toJson({ error: "session_not_found" })
+        return toJson(toErrorJson(rlmError(RlmErrorCode.SESSION_NOT_FOUND)))
       }
 
       if (!binding.tracer && options.config?.tracing) {
@@ -102,20 +103,19 @@ export function createRlmPlanTool(
 
       const coarse = parsePlanArgs(args)
       if (!coarse.ok) {
-        return toJson({ error: "invalid_arguments" })
+        return toJson(toErrorJson(rlmError(RlmErrorCode.INVALID_INPUT)))
       }
 
       const parsed = RlmPlanInputSchema.safeParse(coarse.value)
       if (!parsed.success) {
-        return toJson({ error: "invalid_arguments" })
+        return toJson(toErrorJson(rlmError(RlmErrorCode.INVALID_INPUT)))
       }
 
       if (parsed.data.operations.length > MAX_PLAN_OPERATIONS) {
-        return toJson({
-          error: "too_many_operations",
+        return toJson(toErrorJson(rlmError(RlmErrorCode.TOO_MANY_OPERATIONS, undefined, {
           max_operations: MAX_PLAN_OPERATIONS,
           operation_count: parsed.data.operations.length,
-        })
+        })))
       }
 
       return executeRlmPlan(
