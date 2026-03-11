@@ -98,6 +98,13 @@ export async function initRlmSession(
     blobInput,
     { semanticType: "context" },
   )
+  if (validated.parentSessionId && validated.content !== undefined) {
+    await contextManager.createBlobVariable(
+      validated.sessionId,
+      { name: "item", content: validated.content },
+      { semanticType: "context" },
+    )
+  }
 
   return {
     sessionId: session.sessionId,

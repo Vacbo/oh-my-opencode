@@ -1,9 +1,7 @@
 import { initRlmSession } from "./init-session"
 import { parseFinalAnswer } from "./parser"
-import {
-  createTrustedLocalRlmReplBackend,
-  type RlmReplBackend,
-} from "./repl-runtime"
+import { createVmSandboxRlmReplBackend } from "./vm-sandbox"
+import type { RlmReplBackend } from "./repl-runtime"
 import {
   cleanupSyncSubcallSession,
   runSyncSubcall,
@@ -22,5 +20,5 @@ export const defaultRlmPlanExecutorDeps: RlmPlanExecutorDeps = {
   cleanupSyncSubcallSession,
   initRlmSession,
   parseFinalAnswer,
-  replBackend: createTrustedLocalRlmReplBackend(),
+  replBackend: createVmSandboxRlmReplBackend(),
 }
