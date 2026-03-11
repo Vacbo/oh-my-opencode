@@ -116,10 +116,7 @@ export async function executeRlmPlan(
       const errorMsg = error instanceof Error ? error.message : String(error)
       tracer?.endSpan(opSpan!.spanId, "error", errorMsg)
       tracer?.endSpan(planSpan!.spanId, "error", errorMsg)
-      return toPlanResult(toErrorJson(rlmError(RlmErrorCode.PLAN_OP_FAILED, errorMsg, {
-        op_index: opIndex,
-        op: operation.op,
-      })))
+      return toPlanResult(toErrorJson(rlmError(RlmErrorCode.PLAN_OP_FAILED, { message: errorMsg, op_index: opIndex, op: operation.op })))
     }
   }
 

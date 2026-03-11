@@ -144,7 +144,7 @@ export function createRlmSearchTool(
       } else {
         const regex = createRegex(parsed.data.pattern)
         if (!(regex instanceof RegExp)) {
-          return toJson(toErrorJson(rlmError(RlmErrorCode.REGEX_ERROR, regex.error, { pattern: parsed.data.pattern })))
+          return toJson(toErrorJson(rlmError(RlmErrorCode.REGEX_ERROR, { message: regex.error, pattern: parsed.data.pattern })))
         }
 
         const startedAt = now()
