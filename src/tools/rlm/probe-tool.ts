@@ -30,7 +30,7 @@ export function createRlmProbeTool(
       const { sessionID: chatSessionId } = context
       const binding = coordinator.resolve(chatSessionId)
       if (!binding) {
-        return JSON.stringify(toErrorJson(rlmError(RlmErrorCode.SESSION_NOT_FOUND, undefined, { sessionID: chatSessionId })))
+        return JSON.stringify(toErrorJson(rlmError(RlmErrorCode.SESSION_NOT_FOUND, { sessionID: chatSessionId })))
       }
 
       const contextManager = binding.manager
@@ -79,15 +79,15 @@ export function createRlmProbeTool(
       if (input.operation === "inspect_ref") {
         const variableName = getHiddenVariableName(input.ref)
         if (!variableName) {
-          return JSON.stringify(toErrorJson(rlmError(RlmErrorCode.INVALID_REF, undefined, { ref: input.ref })))
+          return JSON.stringify(toErrorJson(rlmError(RlmErrorCode.INVALID_REF, { ref: input.ref })))
         }
 
         const variable = await contextManager.getVariableByName(sessionId, variableName)
         if (!variable) {
-          return JSON.stringify(toErrorJson(rlmError(RlmErrorCode.VARIABLE_NOT_FOUND, undefined, { ref: input.ref, variable_name: variableName })))
+          return JSON.stringify(toErrorJson(rlmError(RlmErrorCode.VARIABLE_NOT_FOUND, { ref: input.ref, variable_name: variableName })))
         }
         if (variable.storageKind !== "blob") {
-          return JSON.stringify(toErrorJson(rlmError(RlmErrorCode.INVALID_STORAGE_KIND, undefined, {
+          return JSON.stringify(toErrorJson(rlmError(RlmErrorCode.INVALID_STORAGE_KIND, {
             expected_storage_kind: "blob",
             actual_storage_kind: variable.storageKind,
           })))
@@ -104,7 +104,7 @@ export function createRlmProbeTool(
 
       const variable = await contextManager.getVariableByName(sessionId, input.variable_name)
       if (!variable) {
-        return JSON.stringify(toErrorJson(rlmError(RlmErrorCode.VARIABLE_NOT_FOUND, undefined, { variable_name: input.variable_name })))
+        return JSON.stringify(toErrorJson(rlmError(RlmErrorCode.VARIABLE_NOT_FOUND, { variable_name: input.variable_name })))
       }
 
       if (input.operation === "stats") {
@@ -132,7 +132,7 @@ export function createRlmProbeTool(
       }
 
       if (variable.storageKind !== "blob") {
-        return JSON.stringify(toErrorJson(rlmError(RlmErrorCode.INVALID_STORAGE_KIND, undefined, {
+        return JSON.stringify(toErrorJson(rlmError(RlmErrorCode.INVALID_STORAGE_KIND, {
           expected_storage_kind: "blob",
           actual_storage_kind: variable.storageKind,
         })))
@@ -151,7 +151,7 @@ export function createRlmProbeTool(
 
       if (input.operation === "slice") {
         if (input.end < input.start) {
-          return JSON.stringify(toErrorJson(rlmError(RlmErrorCode.INVALID_RANGE, undefined, { start: input.start, end: input.end })))
+          return JSON.stringify(toErrorJson(rlmError(RlmErrorCode.INVALID_RANGE, { start: input.start, end: input.end })))
         }
         const boundedEnd = Math.min(input.end, input.start + probeMaxLines - 1)
         const range = lines.slice(input.start, boundedEnd + 1)

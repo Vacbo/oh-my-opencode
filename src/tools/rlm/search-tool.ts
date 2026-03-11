@@ -103,7 +103,7 @@ export function createRlmSearchTool(
       const { sessionID: chatSessionId } = context
       const binding = coordinator.resolve(chatSessionId)
       if (!binding) {
-        return toJson(toErrorJson(rlmError(RlmErrorCode.SESSION_NOT_FOUND, undefined, { sessionID: chatSessionId })))
+        return toJson(toErrorJson(rlmError(RlmErrorCode.SESSION_NOT_FOUND, { sessionID: chatSessionId })))
       }
 
       const contextManager = binding.manager
@@ -113,18 +113,15 @@ export function createRlmSearchTool(
         return toJson(toErrorJson(rlmError(RlmErrorCode.INVALID_INPUT)))
       }
       if (parsed.data.pattern.length === 0) {
-        return toJson(toErrorJson(rlmError(RlmErrorCode.INVALID_PATTERN, "pattern must not be empty")))
+        return toJson(toErrorJson(rlmError(RlmErrorCode.INVALID_PATTERN, { message: "pattern must not be empty" })))
       }
 
       const variable = await contextManager.getVariableByName(binding.rlmSessionId, parsed.data.variable_name)
       if (!variable) {
-        return toJson(toErrorJson(rlmError(RlmErrorCode.VARIABLE_NOT_FOUND, undefined, { variable_name: parsed.data.variable_name })))
+        return toJson(toErrorJson(rlmError(RlmErrorCode.VARIABLE_NOT_FOUND, { variable_name: parsed.data.variable_name })))
       }
       if (variable.storageKind !== "blob") {
-        return toJson(toErrorJson(rlmError(RlmErrorCode.UNSUPPORTED_VARIABLE_KIND, "rlm_search currently supports blob variables only", {
-          variable_name: parsed.data.variable_name,
-          storage_kind: variable.storageKind,
-        })))
+        return toJson(toErrorJson(rlmError(RlmErrorCode.UNSUPPORTED_VARIABLE_KIND, { message: "rlm_search currently supports blob variables only", variable_name: parsed.data.variable_name, storage_kind: variable.storageKind })))
       }
 
       const content = await contextManager.readBlobContent(variable as RlmBlobVariable)
@@ -153,17 +150,17 @@ export function createRlmSearchTool(
         const startedAt = now()
         for (let index = 0; index < lines.length; index += 1) {
           if (index + 1 > maxRegexLines) {
-            return toJson(toErrorJson(rlmError(RlmErrorCode.REGEX_GUARD_FAILURE, undefined, {
+            return toJson(toErrorJson(rlmError(RlmErrorCode.REGEX_GUARD_FAILURE, {
               reason: "line_limit_exceeded",
               max_lines: maxRegexLines,
               line_count: lines.length,
             })))
           }
           if (now() - startedAt > regexTimeoutMs) {
-            return toJson(toErrorJson(rlmError(RlmErrorCode.REGEX_TIMEOUT, undefined, { timeout_ms: regexTimeoutMs, lines_scanned: index })))
+            return toJson(toErrorJson(rlmError(RlmErrorCode.REGEX_TIMEOUT, { timeout_ms: regexTimeoutMs, lines_scanned: index })))
           }
           if (lines[index].length > maxRegexLineChars) {
-            return toJson(toErrorJson(rlmError(RlmErrorCode.REGEX_GUARD_FAILURE, undefined, {
+            return toJson(toErrorJson(rlmError(RlmErrorCode.REGEX_GUARD_FAILURE, {
               reason: "line_too_long",
               max_line_chars: maxRegexLineChars,
               line_number: index + 1,

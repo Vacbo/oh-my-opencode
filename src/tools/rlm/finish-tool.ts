@@ -15,7 +15,7 @@ export function createRlmFinishTool(): ToolDefinition {
       const { sessionID: chatSessionId } = context
       const binding = coordinator.resolve(chatSessionId)
       if (!binding) {
-        return JSON.stringify(toErrorJson(rlmError(RlmErrorCode.SESSION_NOT_FOUND, undefined, { sessionID: chatSessionId })))
+        return JSON.stringify(toErrorJson(rlmError(RlmErrorCode.SESSION_NOT_FOUND, { sessionID: chatSessionId })))
       }
 
       const contextManager = binding.manager
@@ -28,10 +28,10 @@ export function createRlmFinishTool(): ToolDefinition {
       if (parsed.data.variable_name !== undefined) {
         const variable = await contextManager.getVariableByName(binding.rlmSessionId, parsed.data.variable_name)
         if (!variable) {
-          return JSON.stringify(toErrorJson(rlmError(RlmErrorCode.VARIABLE_NOT_FOUND, undefined, { variable_name: parsed.data.variable_name })))
+          return JSON.stringify(toErrorJson(rlmError(RlmErrorCode.VARIABLE_NOT_FOUND, { variable_name: parsed.data.variable_name })))
         }
         if (variable.storageKind === "manifest") {
-          return JSON.stringify(toErrorJson(rlmError(RlmErrorCode.MANIFEST_REJECTED, undefined, { variable_name: parsed.data.variable_name })))
+          return JSON.stringify(toErrorJson(rlmError(RlmErrorCode.MANIFEST_REJECTED, { variable_name: parsed.data.variable_name })))
         }
 
         const content = await contextManager.readBlobContent(variable as RlmBlobVariable)

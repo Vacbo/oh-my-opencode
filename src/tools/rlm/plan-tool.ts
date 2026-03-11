@@ -112,7 +112,7 @@ export function createRlmPlanTool(
       }
 
       if (parsed.data.operations.length > MAX_PLAN_OPERATIONS) {
-        return toJson(toErrorJson(rlmError(RlmErrorCode.TOO_MANY_OPERATIONS, undefined, {
+        return toJson(toErrorJson(rlmError(RlmErrorCode.TOO_MANY_OPERATIONS, {
           max_operations: MAX_PLAN_OPERATIONS,
           operation_count: parsed.data.operations.length,
         })))
