@@ -10,6 +10,7 @@ import {
   createToolContext,
   dummyClient,
   InMemoryRlmManager,
+  testRlmSessionId,
   unbindTestCoordinator,
 } from "./plan-tool.test-helpers"
 import {
@@ -18,6 +19,7 @@ import {
 } from "./repl-runtime"
 
 const SESSION_ID = "ses-repl-runtime"
+const RLM_SESSION_ID = testRlmSessionId(SESSION_ID)
 
 function createConfig(overrides: Partial<RlmConfig> = {}): RlmConfig {
   return RlmConfigSchema.parse(overrides)
@@ -26,6 +28,7 @@ function createConfig(overrides: Partial<RlmConfig> = {}): RlmConfig {
 function createContext(manager: InMemoryRlmManager, config: RlmConfig) {
   return {
     sessionID: SESSION_ID,
+    rlmSessionId: RLM_SESSION_ID,
     query: "test query",
     manager,
     toolContext: createToolContext(SESSION_ID),
@@ -42,8 +45,8 @@ function setupSession(options: {
 } = {}): InMemoryRlmManager {
   const manager = new InMemoryRlmManager()
   const contextVariableName = options.contextVariableName ?? "context"
-  manager.seedSession(createSession(SESSION_ID, "test query", 0, 3))
-  manager.createBlobVariable(SESSION_ID, {
+  manager.seedSession(createSession(RLM_SESSION_ID, "test query", 0, 3))
+  manager.createBlobVariable(RLM_SESSION_ID, {
     name: contextVariableName,
     content: options.contextContent ?? "seed context",
   })
@@ -70,7 +73,7 @@ describe("trusted local RLM repl backend", () => {
     )
 
     expect(output).toBe("")
-    const variable = manager.getVariableByName(SESSION_ID, "note")
+    const variable = manager.getVariableByName(RLM_SESSION_ID, "note")
     if (!variable || variable.storageKind !== "blob") {
       throw new Error("expected blob variable")
     }
@@ -101,7 +104,7 @@ describe("trusted local RLM repl backend", () => {
     }
 
     expect(parsed.ref.startsWith("hidden://rlm_plan-")).toBe(true)
-    const hidden = manager.getVariableByName(SESSION_ID, parsed.variableName)
+    const hidden = manager.getVariableByName(RLM_SESSION_ID, parsed.variableName)
     if (!hidden || hidden.storageKind !== "blob") {
       throw new Error("expected hidden blob variable")
     }

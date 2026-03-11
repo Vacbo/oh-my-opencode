@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, test } from "bun:test"
+import { describe, expect, test } from "bun:test"
 import type { RlmBlobVariable, RlmManifestVariable } from "../../features/rlm-context/types"
 import type { RlmPlanExecutorDeps } from "./plan-deps"
 import type { RlmContextManagerForPlan, RlmPlanToolOptions } from "./plan-tool"
@@ -89,6 +89,8 @@ const baseSession = {
   variables: new Map(),
 }
 
+const BASE_RLM_SESSION_ID = "rlm-ses-test"
+
 const baseContext = {
   sessionID: "ses-test",
   agent: "test-agent",
@@ -134,7 +136,7 @@ describe("executeMapLlmOperation", () => {
 
       //#when
       const result = await executeMapLlmOperation(
-        contextManager, options, baseContext, baseSession,
+        contextManager, options, baseContext, BASE_RLM_SESSION_ID, baseSession,
         { variable_name: "input", prompt: "{{item}}", output_variable: "output" },
         deps,
       )
@@ -177,7 +179,7 @@ describe("executeMapLlmOperation", () => {
 
       //#when
       const result = await executeMapLlmOperation(
-        contextManager, options, baseContext, baseSession,
+        contextManager, options, baseContext, BASE_RLM_SESSION_ID, baseSession,
         { variable_name: "input", prompt: "{{item}}", output_variable: "output" },
         deps,
       )
@@ -209,7 +211,7 @@ describe("executeMapLlmOperation", () => {
 
       //#when
       await executeMapLlmOperation(
-        contextManager, options, baseContext, baseSession,
+        contextManager, options, baseContext, BASE_RLM_SESSION_ID, baseSession,
         { variable_name: "input", prompt: "{{item}}", output_variable: "output" },
         deps,
       )
@@ -250,13 +252,22 @@ describe("executeMapLlmOperation", () => {
       const options = createBaseOptions({ enabled: true, max_concurrent: 2, fallback_chain: [] })
 
       //#when + #then
-      await expect(
-        executeMapLlmOperation(
-          contextManager, options, baseContext, baseSession,
+      let error: unknown
+      try {
+        await executeMapLlmOperation(
+          contextManager, options, baseContext, BASE_RLM_SESSION_ID, baseSession,
           { variable_name: "input", prompt: "{{item}}", output_variable: "output" },
           deps,
-        ),
-      ).rejects.toThrow("Parallel map_llm failed")
+        )
+      } catch (caught) {
+        error = caught
+      }
+
+      expect(error).toBeInstanceOf(Error)
+      if (!(error instanceof Error)) {
+        throw new Error("expected parallel map_llm to throw")
+      }
+      expect(error.message).toContain("Parallel map_llm failed")
 
       expect(getCreatedBlobs()).toHaveLength(0)
       expect(getCreatedManifest()).toBeNull()

@@ -1,5 +1,5 @@
 import { tool, type ToolDefinition } from "@opencode-ai/plugin/tool"
-import type { RlmBlobVariable, RlmContextVariable } from "../../features/rlm-context/types"
+import type { RlmBlobVariable } from "../../features/rlm-context/types"
 import { coordinator } from "../../features/rlm-context/coordinator"
 import { RlmFinishInputSchema } from "./types"
 
@@ -15,9 +15,10 @@ export function createRlmFinishTool(): ToolDefinition {
       value: tool.schema.string().optional(),
     },
     execute: async (args, context): Promise<string> => {
-      const binding = coordinator.resolve(context.sessionID)
+      const { sessionID: chatSessionId } = context
+      const binding = coordinator.resolve(chatSessionId)
       if (!binding) {
-        return jsonError("session_not_found", { sessionID: context.sessionID })
+        return jsonError("session_not_found", { sessionID: chatSessionId })
       }
 
       const contextManager = binding.manager
@@ -28,7 +29,7 @@ export function createRlmFinishTool(): ToolDefinition {
       }
 
       if (parsed.data.variable_name !== undefined) {
-        const variable = await contextManager.getVariableByName(context.sessionID, parsed.data.variable_name)
+        const variable = await contextManager.getVariableByName(binding.rlmSessionId, parsed.data.variable_name)
         if (!variable) {
           return jsonError("variable_not_found", { variable_name: parsed.data.variable_name })
         }

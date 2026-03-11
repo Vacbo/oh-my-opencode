@@ -28,6 +28,7 @@ const helperNames = new Set(["getQuery", "getVar", "llm_query", "print", "setVar
 
 export interface RlmReplContext {
   sessionID: string
+  rlmSessionId: string
   query: string
   manager: RlmContextManagerLike
   toolContext: ToolContext
@@ -66,13 +67,14 @@ export function createTrustedLocalRlmReplBackend(
 
   return {
     execute: async (code, context) => {
-      const binding = assertExecTrusted(context.sessionID, context.config)
+      const { sessionID: chatSessionId } = context
+      const binding = assertExecTrusted(chatSessionId, context.config)
       const execConfig = resolveRlmExecConfig(context.config)
-      const namespace = sessionNamespaces.get(context.sessionID) ?? {}
+      const namespace = sessionNamespaces.get(chatSessionId) ?? {}
       if (!("context" in namespace)) {
         namespace.context = await readBlobContent(
           context.manager,
-          context.sessionID,
+          context.rlmSessionId,
           binding.contextVariableName,
         )
       }
@@ -81,11 +83,11 @@ export function createTrustedLocalRlmReplBackend(
       const scope: Record<string, unknown> = { ...namespace }
       scope.getQuery = (): string => binding.query
       scope.getVar = async (name: string): Promise<string> =>
-        readBlobContent(context.manager, context.sessionID, name)
+        readBlobContent(context.manager, context.rlmSessionId, name)
       scope.setVar = async (name: string, value: unknown): Promise<void> => {
         await upsertBlobVariable(
           context.manager,
-          context.sessionID,
+          context.rlmSessionId,
           name,
           toStoredContent(value),
         )
@@ -94,7 +96,7 @@ export function createTrustedLocalRlmReplBackend(
       scope.llm_query = async (prompt: string, options?: RlmLlmQueryOptions): Promise<string> => {
         const subcall = await runtimeDeps.runSyncSubcall({
           client: context.client,
-          parentSessionID: context.sessionID,
+          parentSessionID: chatSessionId,
           defaultDirectory: context.directory,
           title: options?.title ?? "RLM llm_query",
           prompt,
@@ -142,8 +144,8 @@ export function createTrustedLocalRlmReplBackend(
         timeoutAfter(execConfig.timeout_ms),
       ])
 
-      syncNamespace(context.sessionID, namespace, scope)
-      return applyFeedback(printed, context.sessionID, "rlm_plan", binding, context.config)
+      syncNamespace(chatSessionId, namespace, scope)
+      return applyFeedback(printed, context.rlmSessionId, "rlm_plan", binding, context.config)
     },
   }
 }

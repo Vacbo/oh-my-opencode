@@ -14,12 +14,14 @@ export async function executeParallelMapLlm(
   contextManager: RlmContextManagerForPlan,
   options: RlmPlanToolOptions,
   context: ToolContext,
+  rlmSessionId: string,
   session: RlmSessionState,
   input: { variable_name: string; prompt: string; output_variable: string },
   deps: RlmPlanExecutorDeps,
 ): Promise<{ output_variable: string; mapped_count: number }> {
+  const { sessionID: chatSessionId } = context
   const maxConcurrent = options.config?.parallel?.max_concurrent ?? 4
-  const items = await contextManager.resolveManifestItems(context.sessionID, input.variable_name)
+  const items = await contextManager.resolveManifestItems(rlmSessionId, input.variable_name)
 
   const staged: StagedResult[] = []
   const allSessionIDs: string[] = []
@@ -33,7 +35,7 @@ export async function executeParallelMapLlm(
       const itemContent = await contextManager.readBlobContent(item)
       const subcall = await deps.runSyncSubcall({
         client: options.client,
-        parentSessionID: context.sessionID,
+        parentSessionID: chatSessionId,
         defaultDirectory: options.directory,
         title: `RLM map_llm ${index + 1}/${items.length}`,
         prompt: fillTemplate(input.prompt, session.query, itemContent),
@@ -80,7 +82,7 @@ export async function executeParallelMapLlm(
     for (const result of staged) {
       const outputName = itemVariableName(input.output_variable, result.index)
       await contextManager.createBlobVariable(
-        context.sessionID,
+        rlmSessionId,
         { name: outputName, content: result.content },
         { semanticType: "result" },
       )
@@ -88,7 +90,7 @@ export async function executeParallelMapLlm(
     }
 
     await contextManager.createManifestVariable(
-      context.sessionID,
+      rlmSessionId,
       { name: input.output_variable, variableNames: outputNames },
       { semanticType: "result" },
     )

@@ -149,10 +149,14 @@ export function createToolContext(sessionID: string): ToolContext {
 
 export const dummyClient = {} as PluginInput["client"]
 
+export function testRlmSessionId(sessionId: string): string {
+  return `rlm-test-${sessionId}`
+}
+
 export function bindTestCoordinator(sessionId: string, manager: RlmContextManagerLike, overrides: Partial<Omit<Parameters<typeof coordinator.bind>[1], "manager">> = {}): void {
   coordinator.bind(sessionId, {
     manager,
-    rlmSessionId: sessionId,
+    rlmSessionId: testRlmSessionId(sessionId),
     depth: 0,
     query: "test query",
     contextVariableName: "context",

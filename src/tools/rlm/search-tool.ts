@@ -1,5 +1,5 @@
 import { tool, type ToolContext, type ToolDefinition } from "@opencode-ai/plugin/tool"
-import type { RlmBlobVariable, RlmContextVariable } from "../../features/rlm-context/types"
+import type { RlmBlobVariable } from "../../features/rlm-context/types"
 import { coordinator } from "../../features/rlm-context/coordinator"
 import { RlmSearchInputSchema } from "./types"
 
@@ -99,9 +99,10 @@ export function createRlmSearchTool(
       max_results: tool.schema.number().int().min(1).optional().describe("Maximum matches to return (bounded internally)"),
     },
     execute: async (args: unknown, context: ToolContext): Promise<string> => {
-      const binding = coordinator.resolve(context.sessionID)
+      const { sessionID: chatSessionId } = context
+      const binding = coordinator.resolve(chatSessionId)
       if (!binding) {
-        return toJson({ error: "session_not_found", sessionID: context.sessionID })
+        return toJson({ error: "session_not_found", sessionID: chatSessionId })
       }
 
       const contextManager = binding.manager
@@ -114,7 +115,7 @@ export function createRlmSearchTool(
         return toJson({ error: "invalid_pattern", message: "pattern must not be empty" })
       }
 
-      const variable = await contextManager.getVariableByName(context.sessionID, parsed.data.variable_name)
+      const variable = await contextManager.getVariableByName(binding.rlmSessionId, parsed.data.variable_name)
       if (!variable) {
         return toJson({ error: "variable_not_found", variable_name: parsed.data.variable_name })
       }

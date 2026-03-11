@@ -7,6 +7,7 @@ import {
   createToolContext,
   dummyClient,
   bindTestCoordinator,
+  testRlmSessionId,
   unbindTestCoordinator,
 } from "./plan-tool.test-helpers"
 
@@ -20,9 +21,11 @@ const defaultConfig: RlmConfig = {
 
 describe("createRlmPlanTool operations", () => {
   it("rejects plans above 50 operations", async () => {
+    const sessionId = "ses-max-ops"
+    const rlmSessionId = testRlmSessionId(sessionId)
     const manager = new InMemoryRlmManager()
-    manager.seedSession(createSession("ses-max-ops", "query", 0, 2))
-    bindTestCoordinator("ses-max-ops", manager)
+    manager.seedSession(createSession(rlmSessionId, "query", 0, 2))
+    bindTestCoordinator(sessionId, manager)
     const tool = createRlmPlanTool({ client: dummyClient, directory: "/tmp", config: defaultConfig })
 
     const operations = Array.from({ length: 51 }, (_, index) => ({
@@ -31,8 +34,8 @@ describe("createRlmPlanTool operations", () => {
       content: `${index}`,
     }))
 
-    const raw = await tool.execute({ operations }, createToolContext("ses-max-ops"))
-    unbindTestCoordinator("ses-max-ops")
+    const raw = await tool.execute({ operations }, createToolContext(sessionId))
+    unbindTestCoordinator(sessionId)
     const parsed = JSON.parse(raw) as { error: string; max_operations: number; operation_count: number }
     expect(parsed.error).toBe("too_many_operations")
     expect(parsed.max_operations).toBe(50)
@@ -40,19 +43,21 @@ describe("createRlmPlanTool operations", () => {
   })
 
   it("write_var creates a blob variable from literal content", async () => {
+    const sessionId = "ses-write"
+    const rlmSessionId = testRlmSessionId(sessionId)
     const manager = new InMemoryRlmManager()
-    manager.seedSession(createSession("ses-write", "query", 0, 2))
-    bindTestCoordinator("ses-write", manager)
+    manager.seedSession(createSession(rlmSessionId, "query", 0, 2))
+    bindTestCoordinator(sessionId, manager)
 
     const tool = createRlmPlanTool({ client: dummyClient, directory: "/tmp", config: defaultConfig })
     const raw = await tool.execute(
       { operations: [{ op: "write_var", variable_name: "note", content: "hello world" }] },
-      createToolContext("ses-write"),
+      createToolContext(sessionId),
     )
-    unbindTestCoordinator("ses-write")
+    unbindTestCoordinator(sessionId)
 
     expect(JSON.parse(raw).error).toBeUndefined()
-    const variable = manager.getVariableByName("ses-write", "note")
+    const variable = manager.getVariableByName(rlmSessionId, "note")
     expect(variable?.storageKind).toBe("blob")
     if (!variable || variable.storageKind !== "blob") {
       throw new Error("expected blob variable")
@@ -61,12 +66,14 @@ describe("createRlmPlanTool operations", () => {
   })
 
   it("map_llm applies templates and creates a result manifest", async () => {
+    const sessionId = "ses-map-llm"
+    const rlmSessionId = testRlmSessionId(sessionId)
     const manager = new InMemoryRlmManager()
-    manager.seedSession(createSession("ses-map-llm", "Persisted query", 0, 3))
-    manager.createBlobVariable("ses-map-llm", { name: "item_a", content: "alpha" })
-    manager.createBlobVariable("ses-map-llm", { name: "item_b", content: "beta" })
-    manager.createManifestVariable("ses-map-llm", { name: "chunks", variableNames: ["item_a", "item_b"] })
-    bindTestCoordinator("ses-map-llm", manager, { query: "Persisted query" })
+    manager.seedSession(createSession(rlmSessionId, "Persisted query", 0, 3))
+    manager.createBlobVariable(rlmSessionId, { name: "item_a", content: "alpha" })
+    manager.createBlobVariable(rlmSessionId, { name: "item_b", content: "beta" })
+    manager.createManifestVariable(rlmSessionId, { name: "chunks", variableNames: ["item_a", "item_b"] })
+    bindTestCoordinator(sessionId, manager, { query: "Persisted query" })
 
     const prompts: string[] = []
     const tool = createRlmPlanTool({
@@ -85,33 +92,35 @@ describe("createRlmPlanTool operations", () => {
       {
         operations: [{ op: "map_llm", variable_name: "chunks", prompt: "Q={{query}} I={{item}}", output_variable: "mapped" }],
       },
-      createToolContext("ses-map-llm"),
+      createToolContext(sessionId),
     )
-    unbindTestCoordinator("ses-map-llm")
+    unbindTestCoordinator(sessionId)
 
     expect(prompts).toEqual(["Q=Persisted query I=alpha", "Q=Persisted query I=beta"])
-    const mapped = manager.resolveManifestItems("ses-map-llm", "mapped")
+    const mapped = manager.resolveManifestItems(rlmSessionId, "mapped")
     expect(mapped.map((blob) => manager.readBlobContent(blob))).toEqual(["mapped-1", "mapped-2"])
   })
 
   it("concat joins manifest items into one blob", async () => {
+    const sessionId = "ses-concat"
+    const rlmSessionId = testRlmSessionId(sessionId)
     const manager = new InMemoryRlmManager()
-    manager.seedSession(createSession("ses-concat", "query", 0, 2))
-    manager.createBlobVariable("ses-concat", { name: "first", content: "left" })
-    manager.createBlobVariable("ses-concat", { name: "second", content: "right" })
-    manager.createManifestVariable("ses-concat", { name: "parts", variableNames: ["first", "second"] })
-    bindTestCoordinator("ses-concat", manager)
+    manager.seedSession(createSession(rlmSessionId, "query", 0, 2))
+    manager.createBlobVariable(rlmSessionId, { name: "first", content: "left" })
+    manager.createBlobVariable(rlmSessionId, { name: "second", content: "right" })
+    manager.createManifestVariable(rlmSessionId, { name: "parts", variableNames: ["first", "second"] })
+    bindTestCoordinator(sessionId, manager)
 
     const tool = createRlmPlanTool({ client: dummyClient, directory: "/tmp", config: defaultConfig })
     await tool.execute(
       {
         operations: [{ op: "concat", variable_name: "parts", output_variable: "joined" }],
       },
-      createToolContext("ses-concat"),
+      createToolContext(sessionId),
     )
-    unbindTestCoordinator("ses-concat")
+    unbindTestCoordinator(sessionId)
 
-    const joined = manager.getVariableByName("ses-concat", "joined")
+    const joined = manager.getVariableByName(rlmSessionId, "joined")
     expect(joined?.storageKind).toBe("blob")
     if (!joined || joined.storageKind !== "blob") {
       throw new Error("expected blob variable")
@@ -120,12 +129,14 @@ describe("createRlmPlanTool operations", () => {
   })
 
   it("reduce_llm aggregates manifest items via one subcall", async () => {
+    const sessionId = "ses-reduce"
+    const rlmSessionId = testRlmSessionId(sessionId)
     const manager = new InMemoryRlmManager()
-    manager.seedSession(createSession("ses-reduce", "Root query", 0, 3))
-    manager.createBlobVariable("ses-reduce", { name: "a", content: "one" })
-    manager.createBlobVariable("ses-reduce", { name: "b", content: "two" })
-    manager.createManifestVariable("ses-reduce", { name: "items", variableNames: ["a", "b"] })
-    bindTestCoordinator("ses-reduce", manager, { query: "Root query" })
+    manager.seedSession(createSession(rlmSessionId, "Root query", 0, 3))
+    manager.createBlobVariable(rlmSessionId, { name: "a", content: "one" })
+    manager.createBlobVariable(rlmSessionId, { name: "b", content: "two" })
+    manager.createManifestVariable(rlmSessionId, { name: "items", variableNames: ["a", "b"] })
+    bindTestCoordinator(sessionId, manager, { query: "Root query" })
 
     const prompts: string[] = []
     const tool = createRlmPlanTool({
@@ -144,12 +155,12 @@ describe("createRlmPlanTool operations", () => {
       {
         operations: [{ op: "reduce_llm", variable_name: "items", prompt: "Q={{query}} ITEMS={{item}}", output_variable: "summary" }],
       },
-      createToolContext("ses-reduce"),
+      createToolContext(sessionId),
     )
-    unbindTestCoordinator("ses-reduce")
+    unbindTestCoordinator(sessionId)
 
     expect(prompts).toEqual(["Q=Root query ITEMS=one\n\ntwo"])
-    const summary = manager.getVariableByName("ses-reduce", "summary")
+    const summary = manager.getVariableByName(rlmSessionId, "summary")
     expect(summary?.storageKind).toBe("blob")
     if (!summary || summary.storageKind !== "blob") {
       throw new Error("expected blob variable")

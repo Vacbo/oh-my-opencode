@@ -26,9 +26,10 @@ export function createRlmProbeTool(
       end: tool.schema.number().optional(),
     },
     execute: async (args, context): Promise<string> => {
-      const binding = coordinator.resolve(context.sessionID)
+      const { sessionID: chatSessionId } = context
+      const binding = coordinator.resolve(chatSessionId)
       if (!binding) {
-        return jsonError("session_not_found", { sessionID: context.sessionID })
+        return jsonError("session_not_found", { sessionID: chatSessionId })
       }
 
       const contextManager = binding.manager
@@ -39,7 +40,7 @@ export function createRlmProbeTool(
       }
 
       const input = parsed.data
-      const sessionId = context.sessionID
+      const sessionId = binding.rlmSessionId
 
       if (input.operation === "list_vars") {
         const variables = await contextManager.listVariables(sessionId)

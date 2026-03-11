@@ -25,10 +25,10 @@ interface BlobWriter {
 
 export async function readBlobContent(
   manager: BlobReader,
-  sessionID: string,
+  rlmSessionId: string,
   name: string,
 ): Promise<string> {
-  const variable = await manager.getVariableByName(sessionID, name)
+  const variable = await manager.getVariableByName(rlmSessionId, name)
   if (!variable || variable.storageKind !== "blob") {
     throw new Error(`Blob variable not found: ${name}`)
   }
@@ -37,17 +37,17 @@ export async function readBlobContent(
 
 export async function upsertBlobVariable(
   manager: BlobWriter,
-  sessionID: string,
+  rlmSessionId: string,
   name: string,
   content: string,
 ): Promise<void> {
-  const session = await manager.getSession(sessionID)
+  const session = await manager.getSession(rlmSessionId)
   if (!session) {
-    throw new Error(`Session not found: ${sessionID}`)
+    throw new Error(`Session not found: ${rlmSessionId}`)
   }
   session.variables.delete(name)
   await manager.createBlobVariable(
-    sessionID,
+    rlmSessionId,
     { name, content },
     { semanticType: "scratch" },
   )

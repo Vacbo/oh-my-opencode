@@ -1,5 +1,6 @@
 import type { ToolContext } from "@opencode-ai/plugin/tool"
 import { RlmConfigSchema } from "../../config/schema/experimental"
+import { coordinator } from "../../features/rlm-context/coordinator"
 import type { RlmPlanInput } from "./types"
 import type { RlmContextManagerForPlan, RlmPlanToolOptions } from "./plan-tool"
 import {
@@ -30,7 +31,12 @@ export async function executeRlmPlan(
   depsInput: Partial<RlmPlanExecutorDeps> = {},
 ): Promise<string> {
   const deps: RlmPlanExecutorDeps = { ...defaultRlmPlanExecutorDeps, ...depsInput }
-  const session = await requireSession(contextManager, context.sessionID)
+  const binding = coordinator.resolve(context.sessionID)
+  if (!binding) {
+    return toPlanResult({ error: "session_not_found" })
+  }
+  const rlmSessionId = binding.rlmSessionId
+  const session = await requireSession(contextManager, rlmSessionId)
   const opResults: Array<Record<string, unknown>> = []
 
   for (let opIndex = 0; opIndex < args.operations.length; opIndex += 1) {
@@ -38,27 +44,27 @@ export async function executeRlmPlan(
 
     try {
       if (operation.op === "split") {
-        opResults.push({ op: operation.op, ...(await executeSplitOperation(contextManager, context, operation)) })
+        opResults.push({ op: operation.op, ...(await executeSplitOperation(contextManager, rlmSessionId, operation)) })
         continue
       }
       if (operation.op === "select") {
-        opResults.push({ op: operation.op, ...(await executeSelectOperation(contextManager, context, operation)) })
+        opResults.push({ op: operation.op, ...(await executeSelectOperation(contextManager, rlmSessionId, operation)) })
         continue
       }
       if (operation.op === "map_llm") {
-        opResults.push({ op: operation.op, ...(await executeMapLlmOperation(contextManager, options, context, session, operation, deps)) })
+        opResults.push({ op: operation.op, ...(await executeMapLlmOperation(contextManager, options, context, rlmSessionId, session, operation, deps)) })
         continue
       }
       if (operation.op === "map_rlm") {
-        opResults.push({ op: operation.op, ...(await executeMapRlmOperation(contextManager, options, context, session, operation, deps)) })
+        opResults.push({ op: operation.op, ...(await executeMapRlmOperation(contextManager, options, context, rlmSessionId, session, operation, deps)) })
         continue
       }
       if (operation.op === "concat") {
-        opResults.push({ op: operation.op, ...(await executeConcatOperation(contextManager, context, operation)) })
+        opResults.push({ op: operation.op, ...(await executeConcatOperation(contextManager, rlmSessionId, operation)) })
         continue
       }
       if (operation.op === "reduce_llm") {
-        opResults.push({ op: operation.op, ...(await executeReduceLlmOperation(contextManager, options, context, session, operation, deps)) })
+        opResults.push({ op: operation.op, ...(await executeReduceLlmOperation(contextManager, options, context, rlmSessionId, session, operation, deps)) })
         continue
       }
       if (operation.op === "exec") {
@@ -68,6 +74,7 @@ export async function executeRlmPlan(
             contextManager,
             options,
             context,
+            rlmSessionId,
             operation,
             deps.replBackend,
             options.config ?? RlmConfigSchema.parse({}),
@@ -76,7 +83,7 @@ export async function executeRlmPlan(
         continue
       }
       if (operation.op === "write_var") {
-        opResults.push({ op: operation.op, ...(await executeWriteVarOperation(contextManager, context, operation)) })
+        opResults.push({ op: operation.op, ...(await executeWriteVarOperation(contextManager, rlmSessionId, operation)) })
         continue
       }
       if (operation.op === "final_var") {

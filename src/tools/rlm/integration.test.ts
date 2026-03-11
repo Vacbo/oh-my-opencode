@@ -5,6 +5,7 @@ import {
   createSession,
   createToolContext,
   dummyClient,
+  testRlmSessionId,
   unbindTestCoordinator,
 } from "./plan-tool.test-helpers"
 import { createRlmProbeTool } from "./probe-tool"
@@ -42,16 +43,17 @@ describe("RLM Phase 2 integration", () => {
     } = {},
   ): InMemoryRlmManager {
     const manager = new InMemoryRlmManager()
+    const rlmSessionId = testRlmSessionId(sessionId)
     manager.seedSession(
       createSession(
-        sessionId,
+        rlmSessionId,
         options.query ?? "test query",
         options.depth ?? 0,
         options.maxDepth ?? 3,
       ),
     )
     if (options.contextContent !== undefined) {
-      manager.createBlobVariable(sessionId, {
+      manager.createBlobVariable(rlmSessionId, {
         name: "context",
         content: options.contextContent,
       })
@@ -133,13 +135,14 @@ describe("RLM Phase 2 integration", () => {
         setupSession("ses-boundary", { contextContent: "seed" })
         const config = createConfig()
         const binding = coordinator.resolve("ses-boundary")
+        if (!binding) throw new Error("expected binding")
 
-        const offloaded = await applyFeedback(largeContent, "ses-boundary", "rlm_probe", binding, config)
+        const offloaded = await applyFeedback(largeContent, binding.rlmSessionId, "rlm_probe", binding, config)
         const parsed = JSON.parse(offloaded)
         expect(parsed.ref).toContain("hidden://")
         expect(parsed.preview.length).toBeLessThanOrEqual(200)
 
-        const passthrough = await applyFeedback(largeContent, "ses-boundary", "rlm_finish", binding, config)
+        const passthrough = await applyFeedback(largeContent, binding.rlmSessionId, "rlm_finish", binding, config)
         expect(passthrough).toBe(largeContent)
       })
     })
@@ -154,11 +157,12 @@ describe("RLM Phase 2 integration", () => {
         setupSession("ses-offload", { contextContent: "seed" })
         const config = createConfig()
         const binding = coordinator.resolve("ses-offload")
+        if (!binding) throw new Error("expected binding")
         const largeOutput = "A".repeat(3000)
 
         expect(shouldOffload(3000, config)).toBe(true)
 
-        const result = await applyFeedback(largeOutput, "ses-offload", "rlm_probe", binding, config)
+        const result = await applyFeedback(largeOutput, binding.rlmSessionId, "rlm_probe", binding, config)
         const parsed = JSON.parse(result)
         expect(parsed.ref).toMatch(/^hidden:\/\//)
         expect(parsed.variableName).toMatch(/^__hidden_/)
@@ -171,11 +175,12 @@ describe("RLM Phase 2 integration", () => {
         setupSession("ses-small", { contextContent: "seed" })
         const config = createConfig()
         const binding = coordinator.resolve("ses-small")
+        if (!binding) throw new Error("expected binding")
         const smallOutput = "small result"
 
         expect(shouldOffload(Buffer.byteLength(smallOutput), config)).toBe(false)
 
-        const result = await applyFeedback(smallOutput, "ses-small", "rlm_probe", binding, config)
+        const result = await applyFeedback(smallOutput, binding.rlmSessionId, "rlm_probe", binding, config)
         expect(result).toBe(smallOutput)
       })
     })
@@ -185,9 +190,10 @@ describe("RLM Phase 2 integration", () => {
         setupSession("ses-inspect", { contextContent: "seed" })
         const config = createConfig()
         const binding = coordinator.resolve("ses-inspect")
+        if (!binding) throw new Error("expected binding")
 
         const largeOutput = "B".repeat(3000)
-        const offloaded = await applyFeedback(largeOutput, "ses-inspect", "rlm_probe", binding, config)
+        const offloaded = await applyFeedback(largeOutput, binding.rlmSessionId, "rlm_probe", binding, config)
         const { ref } = JSON.parse(offloaded)
 
         const probeTool = createRlmProbeTool()
@@ -227,6 +233,7 @@ describe("RLM Phase 2 integration", () => {
 
         const replContext = {
           sessionID: "ses-bridge",
+          rlmSessionId: testRlmSessionId("ses-bridge"),
           query: "summarize context",
           manager,
           toolContext: createToolContext("ses-bridge"),
@@ -247,7 +254,7 @@ describe("RLM Phase 2 integration", () => {
 
         expect(output).toBe("done\n")
 
-        const summaryVar = manager.getVariableByName("ses-bridge", "summary")
+        const summaryVar = manager.getVariableByName(testRlmSessionId("ses-bridge"), "summary")
         expect(summaryVar).toBeDefined()
         expect(summaryVar?.storageKind).toBe("blob")
         if (summaryVar && summaryVar.storageKind === "blob") {
@@ -272,6 +279,7 @@ describe("RLM Phase 2 integration", () => {
         const backend = createTrustedLocalRlmReplBackend()
         const replContext = {
           sessionID: "ses-untrusted",
+          rlmSessionId: testRlmSessionId("ses-untrusted"),
           query: "test",
           manager,
           toolContext: createToolContext("ses-untrusted"),
@@ -298,6 +306,7 @@ describe("RLM Phase 2 integration", () => {
         const backend = createTrustedLocalRlmReplBackend()
         const replContext = {
           sessionID: "ses-notrust-req",
+          rlmSessionId: testRlmSessionId("ses-notrust-req"),
           query: "test",
           manager,
           toolContext: createToolContext("ses-notrust-req"),
@@ -338,7 +347,7 @@ describe("RLM Phase 2 integration", () => {
     describe("#when model outputs FINAL_VAR(varname)", () => {
       it("#then variable is resolved and value returned", async () => {
         const manager = setupSession("ses-fvar", { contextContent: "seed" })
-        manager.createBlobVariable("ses-fvar", {
+        manager.createBlobVariable(testRlmSessionId("ses-fvar"), {
           name: "answer",
           content: "resolved variable content",
         })

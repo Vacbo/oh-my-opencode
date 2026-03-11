@@ -1,4 +1,3 @@
-import type { ToolContext } from "@opencode-ai/plugin/tool"
 import type { RlmBlobVariable } from "../../features/rlm-context/types"
 import type { RlmContextManagerForPlan } from "./plan-tool"
 import {
@@ -9,17 +8,17 @@ import {
 
 export async function executeSplitOperation(
   contextManager: RlmContextManagerForPlan,
-  context: ToolContext,
+  rlmSessionId: string,
   input: { variable_name: string; chunk_size: number; output_variable: string },
 ): Promise<{ output_variable: string; item_count: number }> {
-  const source = await requireBlob(contextManager, context.sessionID, input.variable_name)
+  const source = await requireBlob(contextManager, rlmSessionId, input.variable_name)
   const chunks = chunkText(await contextManager.readBlobContent(source), input.chunk_size)
   const chunkNames: string[] = []
 
   for (let i = 0; i < chunks.length; i += 1) {
     const chunkName = itemVariableName(input.output_variable, i)
     await contextManager.createBlobVariable(
-      context.sessionID,
+      rlmSessionId,
       { name: chunkName, content: chunks[i] },
       { semanticType: "derived" },
     )
@@ -27,7 +26,7 @@ export async function executeSplitOperation(
   }
 
   await contextManager.createManifestVariable(
-    context.sessionID,
+    rlmSessionId,
     { name: input.output_variable, variableNames: chunkNames },
     { semanticType: "derived" },
   )
@@ -37,7 +36,7 @@ export async function executeSplitOperation(
 
 export async function executeSelectOperation(
   contextManager: RlmContextManagerForPlan,
-  context: ToolContext,
+  rlmSessionId: string,
   input: {
     variable_name: string
     indices?: number[]
@@ -45,7 +44,7 @@ export async function executeSelectOperation(
     output_variable: string
   },
 ): Promise<{ output_variable: string; item_count: number }> {
-  const items = await contextManager.resolveManifestItems(context.sessionID, input.variable_name)
+  const items = await contextManager.resolveManifestItems(rlmSessionId, input.variable_name)
   const indexed = input.indices
     ? input.indices.map((idx) => {
         if (idx >= items.length) {
@@ -64,7 +63,7 @@ export async function executeSelectOperation(
   }
 
   await contextManager.createManifestVariable(
-    context.sessionID,
+    rlmSessionId,
     { name: input.output_variable, variableNames: selected.map((item) => item.name) },
     { semanticType: "derived" },
   )
@@ -74,17 +73,17 @@ export async function executeSelectOperation(
 
 export async function executeConcatOperation(
   contextManager: RlmContextManagerForPlan,
-  context: ToolContext,
+  rlmSessionId: string,
   input: { variable_name: string; output_variable: string },
 ): Promise<{ output_variable: string; item_count: number }> {
-  const items = await contextManager.resolveManifestItems(context.sessionID, input.variable_name)
+  const items = await contextManager.resolveManifestItems(rlmSessionId, input.variable_name)
   const contents: string[] = []
   for (const item of items) {
     contents.push(await contextManager.readBlobContent(item))
   }
 
   await contextManager.createBlobVariable(
-    context.sessionID,
+    rlmSessionId,
     { name: input.output_variable, content: contents.join("\n") },
     { semanticType: "derived" },
   )
@@ -94,11 +93,11 @@ export async function executeConcatOperation(
 
 export async function executeWriteVarOperation(
   contextManager: RlmContextManagerForPlan,
-  context: ToolContext,
+  rlmSessionId: string,
   input: { variable_name: string; content: string },
 ): Promise<{ variable_name: string }> {
   await contextManager.createBlobVariable(
-    context.sessionID,
+    rlmSessionId,
     { name: input.variable_name, content: input.content },
     { semanticType: "scratch" },
   )

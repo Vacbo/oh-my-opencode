@@ -34,21 +34,23 @@ export async function executeMapLlmOperation(
   contextManager: RlmContextManagerForPlan,
   options: RlmPlanToolOptions,
   context: ToolContext,
+  rlmSessionId: string,
   session: RlmSessionState,
   input: { variable_name: string; prompt: string; output_variable: string },
   deps: RlmPlanExecutorDeps,
 ): Promise<{ output_variable: string; mapped_count: number }> {
+  const { sessionID: chatSessionId } = context
   if (options.config?.parallel?.enabled) {
-    return executeParallelMapLlm(contextManager, options, context, session, input, deps)
+    return executeParallelMapLlm(contextManager, options, context, rlmSessionId, session, input, deps)
   }
 
-  const items = await contextManager.resolveManifestItems(context.sessionID, input.variable_name)
+  const items = await contextManager.resolveManifestItems(rlmSessionId, input.variable_name)
   const outputNames: string[] = []
   for (let index = 0; index < items.length; index += 1) {
     const itemContent = await contextManager.readBlobContent(items[index])
     const subcall = await deps.runSyncSubcall({
       client: options.client,
-      parentSessionID: context.sessionID,
+      parentSessionID: chatSessionId,
       defaultDirectory: options.directory,
       title: `RLM map_llm ${index + 1}/${items.length}`,
       prompt: fillTemplate(input.prompt, session.query, itemContent),
@@ -59,7 +61,7 @@ export async function executeMapLlmOperation(
     try {
       const outputName = itemVariableName(input.output_variable, index)
       await contextManager.createBlobVariable(
-        context.sessionID,
+        rlmSessionId,
         { name: outputName, content: resolveSubcallText(subcall) },
         { semanticType: "result" },
       )
@@ -71,7 +73,7 @@ export async function executeMapLlmOperation(
     }
   }
   await contextManager.createManifestVariable(
-    context.sessionID,
+    rlmSessionId,
     { name: input.output_variable, variableNames: outputNames },
     { semanticType: "result" },
   )
@@ -83,21 +85,23 @@ export async function executeMapRlmOperation(
   contextManager: RlmContextManagerForPlan,
   options: RlmPlanToolOptions,
   context: ToolContext,
+  rlmSessionId: string,
   session: RlmSessionState,
   input: { variable_name: string; prompt: string; output_variable: string },
   deps: RlmPlanExecutorDeps,
 ): Promise<{ output_variable: string; mapped_count: number; downgraded_to?: string }> {
+  const { sessionID: chatSessionId } = context
   if (session.depth + 1 >= session.maxDepth) {
-    const downgraded = await executeMapLlmOperation(contextManager, options, context, session, input, deps)
+    const downgraded = await executeMapLlmOperation(contextManager, options, context, rlmSessionId, session, input, deps)
     return { ...downgraded, downgraded_to: "map_llm" }
   }
-  const items = await contextManager.resolveManifestItems(context.sessionID, input.variable_name)
+  const items = await contextManager.resolveManifestItems(rlmSessionId, input.variable_name)
   const outputNames: string[] = []
   for (let index = 0; index < items.length; index += 1) {
     const itemContent = await contextManager.readBlobContent(items[index])
     const subcall = await deps.runSyncSubcall({
       client: options.client,
-      parentSessionID: context.sessionID,
+      parentSessionID: chatSessionId,
       defaultDirectory: options.directory,
       title: `RLM map_rlm ${index + 1}/${items.length}`,
       prompt: fillTemplate(input.prompt, session.query, itemContent),
@@ -117,7 +121,7 @@ export async function executeMapRlmOperation(
         })
         // Bind child session through coordinator with inherited trust.
         // Resolve parent binding to get the full RlmContextManager instance.
-        const parentBinding = coordinator.resolve(context.sessionID)
+        const parentBinding = coordinator.resolve(chatSessionId)
         if (parentBinding) {
           coordinator.bind(childSessionID, {
             manager: parentBinding.manager,
@@ -136,7 +140,7 @@ export async function executeMapRlmOperation(
       }
       const outputName = itemVariableName(input.output_variable, index)
       await contextManager.createBlobVariable(
-        context.sessionID,
+        rlmSessionId,
         {
           name: outputName,
           content: await resolveRecursiveOutput(contextManager, subcall.sessionID, subcall, deps),
@@ -153,7 +157,7 @@ export async function executeMapRlmOperation(
     }
   }
   await contextManager.createManifestVariable(
-    context.sessionID,
+    rlmSessionId,
     { name: input.output_variable, variableNames: outputNames },
     { semanticType: "result" },
   )
@@ -165,18 +169,20 @@ export async function executeReduceLlmOperation(
   contextManager: RlmContextManagerForPlan,
   options: RlmPlanToolOptions,
   context: ToolContext,
+  rlmSessionId: string,
   session: RlmSessionState,
   input: { variable_name: string; prompt: string; output_variable: string },
   deps: RlmPlanExecutorDeps,
 ): Promise<{ output_variable: string; item_count: number }> {
-  const items = await contextManager.resolveManifestItems(context.sessionID, input.variable_name)
+  const { sessionID: chatSessionId } = context
+  const items = await contextManager.resolveManifestItems(rlmSessionId, input.variable_name)
   const parts: string[] = []
   for (const item of items) {
     parts.push(await contextManager.readBlobContent(item))
   }
   const subcall = await deps.runSyncSubcall({
     client: options.client,
-    parentSessionID: context.sessionID,
+    parentSessionID: chatSessionId,
     defaultDirectory: options.directory,
     title: "RLM reduce_llm",
     prompt: fillTemplate(input.prompt, session.query, parts.join("\n\n")),
@@ -186,7 +192,7 @@ export async function executeReduceLlmOperation(
   })
   try {
     await contextManager.createBlobVariable(
-      context.sessionID,
+      rlmSessionId,
       { name: input.output_variable, content: resolveSubcallText(subcall) },
       { semanticType: "result" },
     )

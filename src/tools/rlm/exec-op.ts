@@ -14,13 +14,16 @@ export async function executeExecOperation(
   contextManager: RlmContextManagerForPlan,
   options: RlmPlanToolOptions,
   context: ToolContext,
+  rlmSessionId: string,
   operation: { op: "exec"; code: string; output_variable?: string },
   backend: RlmReplBackend,
   config: RlmConfig,
 ): Promise<{ executed: true; output_variable?: string; output_ref?: string }> {
-  const binding = assertExecTrusted(context.sessionID, config)
+  const { sessionID: chatSessionId } = context
+  const binding = assertExecTrusted(chatSessionId, config)
   const output = await backend.execute(operation.code, {
-    sessionID: context.sessionID,
+    sessionID: chatSessionId,
+    rlmSessionId,
     query: binding.query,
     manager: binding.manager,
     toolContext: context,
@@ -34,11 +37,11 @@ export async function executeExecOperation(
 
   if (operation.output_variable) {
     const storedOutput = offloaded
-      ? await readBlobContent(contextManager, context.sessionID, offloaded.variableName)
+      ? await readBlobContent(contextManager, rlmSessionId, offloaded.variableName)
       : output
     await upsertBlobVariable(
       contextManager,
-      context.sessionID,
+      rlmSessionId,
       operation.output_variable,
       storedOutput,
     )
