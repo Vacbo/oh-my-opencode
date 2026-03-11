@@ -7,3 +7,4 @@ export {
   coordinator
 } from './coordinator';
 export { createRlmPersistence, type RlmPersistence, type PersistedSession } from './persistence'
+export { RlmErrorCode, RlmError, rlmError, toErrorJson, errorSlug, defaultMessage, type RlmErrorJson, type RlmErrorContext } from './error-codes'
