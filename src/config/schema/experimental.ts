@@ -20,6 +20,11 @@ const RlmParallelConfigSchema = z.object({
   fallback_chain: z.array(z.string()).default([]),
 })
 
+const RlmPersistenceConfigSchema = z.object({
+  enabled: z.boolean().default(false),
+  max_sessions: z.number().int().min(1).default(100),
+})
+
 export const RlmConfigSchema = z.object({
   enabled: z.boolean().default(false),
   max_depth: z.number().int().min(1).max(5).default(1),
@@ -30,6 +35,7 @@ export const RlmConfigSchema = z.object({
   subcall_model: z.string().optional(),
   probe_max_lines: z.number().int().min(10).default(200),
   parallel: RlmParallelConfigSchema.optional(),
+  persistence: RlmPersistenceConfigSchema.optional(),
 })
 
 export type RlmConfig = z.infer<typeof RlmConfigSchema>

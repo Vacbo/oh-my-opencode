@@ -58,7 +58,7 @@ function setupSession(options: {
 }
 
 afterEach(() => {
-  clearRlmReplNamespace(SESSION_ID)
+  clearRlmReplNamespace(RLM_SESSION_ID)
   unbindTestCoordinator(SESSION_ID)
 })
 

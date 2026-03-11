@@ -70,7 +70,7 @@ export function createTrustedLocalRlmReplBackend(
       const { sessionID: chatSessionId } = context
       const binding = assertExecTrusted(chatSessionId, context.config)
       const execConfig = resolveRlmExecConfig(context.config)
-      const namespace = sessionNamespaces.get(chatSessionId) ?? {}
+      const namespace = sessionNamespaces.get(context.rlmSessionId) ?? {}
       if (!("context" in namespace)) {
         namespace.context = await readBlobContent(
           context.manager,
@@ -144,7 +144,7 @@ export function createTrustedLocalRlmReplBackend(
         timeoutAfter(execConfig.timeout_ms),
       ])
 
-      syncNamespace(chatSessionId, namespace, scope)
+      syncNamespace(context.rlmSessionId, namespace, scope)
       return applyFeedback(printed, context.rlmSessionId, "rlm_plan", binding, context.config)
     },
   }

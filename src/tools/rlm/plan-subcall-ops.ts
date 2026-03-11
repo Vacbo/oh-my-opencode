@@ -129,7 +129,7 @@ export async function executeMapRlmOperation(
             depth: session.depth + 1,
             query: session.query,
             contextVariableName: "item",
-            trusted: true,
+            trusted: parentBinding.trusted,
           })
         }
       },
