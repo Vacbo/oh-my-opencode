@@ -24,6 +24,9 @@ Four public RLM tools (`rlm_probe`, `rlm_search`, `rlm_plan`, `rlm_finish`) plus
 | `plan-subcall-ops.ts` | `map_llm`, `map_rlm`, `reduce_llm` with child session handling |
 | `subcall-runner.ts` | Sync sub-call execution for child RLM/LM sessions |
 | `plan-utils.ts` | Helpers: session lookup, template expansion, error formatting |
+| `progress-emitter.ts` | `createProgressEmitter()`: throttled progress events for plan execution |
+| `vm-sandbox.ts` | `createVmSandboxRlmReplBackend()`: defense-in-depth `node:vm` sandbox |
+| `benchmark/` | RLM benchmark harness and 4 core patterns |
 | `tools.ts` | Factory functions: `createRlmProbeTool()`, `createRlmSearchTool()`, etc. |
 | `index.ts` | Barrel export: all factories and helpers |
 
@@ -297,6 +300,37 @@ Or on `final_var`:
 
 **Used by:** `map_rlm` and `reduce_llm` for child result extraction
 
+### `createProgressEmitter(config, logger)`
+
+**Purpose:** Throttled progress events for plan execution.
+
+**Input:**
+```typescript
+{
+  throttleMs: number
+}
+```
+
+**Behavior:**
+- Emits `rlm:plan:progress` events before and after each operation
+- Throttles "before" events to `throttleMs` (default 200ms)
+- Always emits "after" events and first/last "before" events
+- Includes `opIndex`, `opCount`, `opType`, `phase`, and `durationMs` (for "after")
+
+### `createVmSandboxRlmReplBackend(deps?)`
+
+**Purpose:** Defense-in-depth `node:vm` sandbox for `exec` operations.
+
+**Architecture:**
+- Uses `node:vm` module for execution isolation
+- **Null-prototype namespace:** Prevents prototype pollution attacks
+- **Blocked globals:** Explicitly blocks `Buffer`, `process`, `require`, `__dirname`, `__filename`
+- **Code generation disabled:** `strings: false`, `wasm: false`
+- **Timeout protection:** Mandatory `timeout` for `runInContext`
+- **Fallback mode:** Uses `with(scope)` proxy if `node:vm` is unavailable (less secure)
+
+**Security Note:** Node.js explicitly warns that `node:vm` is not a security mechanism. This sandbox provides defense-in-depth but should not be the sole security layer for untrusted code.
+
 ## PLAN-OP SEMANTICS
 
 ### `final_var` vs `rlm_finish`
@@ -432,6 +466,24 @@ These contracts define the model-facing REPL namespace injected into `exec` oper
 **Trusted mode:** Exec requires `binding.trusted === true` when `exec.trusted_only` is enabled (default). Untrusted bindings receive an error: `"exec requires trusted mode"`.
 
 **Namespace persistence:** Variables set via the `context` global and bare assignments persist across exec calls within the same session.
+
+### Benchmark Patterns
+
+The `src/tools/rlm/benchmark/` directory contains a harness and 4 core patterns for verifying RLM performance and correctness:
+
+| Pattern | Purpose |
+|---------|---------|
+| **Split-Map-Reduce** | Verifies basic manifest flow: split blob → map LLM → reduce LLM |
+| **Recursive Decomposition** | Verifies `map_rlm` recursion, depth limits, and child session cleanup |
+| **Variable Pipeline** | Verifies complex multi-tool flows: `exec` → `probe` → `exec` → `finish` |
+| **Error Recovery** | Verifies error taxonomy and graceful failure on invalid inputs/patterns |
+
+Run benchmarks via:
+```bash
+bun test src/tools/rlm/benchmark/harness.test.ts
+```
+
+**Trusted mode:** Exec requires `binding.trusted === true` when `exec.trusted_only` is enabled (default). Untrusted bindings receive an error: `"exec requires trusted mode"`.
 
 ## TESTING GUIDELINES
 

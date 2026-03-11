@@ -2,6 +2,7 @@ import type { ToolContext } from "@opencode-ai/plugin/tool"
 import { RlmConfigSchema } from "../../config/schema/experimental"
 import { coordinator } from "../../features/rlm-context/coordinator"
 import { rlmError, toErrorJson, RlmErrorCode } from "../../features/rlm-context/error-codes"
+import { log } from "../../shared/logger"
 import type { RlmPlanInput } from "./types"
 import type { RlmContextManagerForPlan, RlmPlanToolOptions } from "./plan-tool"
 import {
@@ -21,6 +22,7 @@ import {
 } from "./plan-deps"
 import { executeExecOperation } from "./exec-op"
 import { requireSession } from "./plan-utils"
+import { createProgressEmitter } from "./progress-emitter"
 
 const toPlanResult = (payload: Record<string, unknown>): string => JSON.stringify(payload)
 
@@ -36,6 +38,9 @@ export async function executeRlmPlan(
   if (!binding) {
     return toPlanResult(toErrorJson(rlmError(RlmErrorCode.SESSION_NOT_FOUND)))
   }
+
+  const rlmConfig = options.config ?? RlmConfigSchema.parse({})
+
   const rlmSessionId = binding.rlmSessionId
   const chatSessionId = context.sessionID
   const tracer = binding.tracer
@@ -44,39 +49,52 @@ export async function executeRlmPlan(
 
   const planSpan = tracer?.startSpan(chatSessionId, rlmSessionId, "plan.execute")
 
+  const progressEmitter = rlmConfig.progress?.enabled
+    ? createProgressEmitter({ throttleMs: rlmConfig.progress.throttle_ms }, log)
+    : undefined
+
   for (let opIndex = 0; opIndex < args.operations.length; opIndex += 1) {
     const operation = args.operations[opIndex]
     const opSpan = tracer?.startSpan(chatSessionId, rlmSessionId, `plan.op.${operation.op}`, planSpan?.spanId)
+    const opStartTime = Date.now()
+
+    progressEmitter?.emitBefore(chatSessionId, rlmSessionId, opIndex, args.operations.length, operation.op)
 
     try {
       if (operation.op === "split") {
         opResults.push({ op: operation.op, ...(await executeSplitOperation(contextManager, rlmSessionId, operation)) })
         tracer?.endSpan(opSpan!.spanId, "ok")
+        progressEmitter?.emitAfter(chatSessionId, rlmSessionId, opIndex, args.operations.length, operation.op, Date.now() - opStartTime)
         continue
       }
       if (operation.op === "select") {
         opResults.push({ op: operation.op, ...(await executeSelectOperation(contextManager, rlmSessionId, operation)) })
         tracer?.endSpan(opSpan!.spanId, "ok")
+        progressEmitter?.emitAfter(chatSessionId, rlmSessionId, opIndex, args.operations.length, operation.op, Date.now() - opStartTime)
         continue
       }
       if (operation.op === "map_llm") {
         opResults.push({ op: operation.op, ...(await executeMapLlmOperation(contextManager, options, context, rlmSessionId, session, operation, deps)) })
         tracer?.endSpan(opSpan!.spanId, "ok")
+        progressEmitter?.emitAfter(chatSessionId, rlmSessionId, opIndex, args.operations.length, operation.op, Date.now() - opStartTime)
         continue
       }
       if (operation.op === "map_rlm") {
         opResults.push({ op: operation.op, ...(await executeMapRlmOperation(contextManager, options, context, rlmSessionId, session, operation, deps)) })
         tracer?.endSpan(opSpan!.spanId, "ok")
+        progressEmitter?.emitAfter(chatSessionId, rlmSessionId, opIndex, args.operations.length, operation.op, Date.now() - opStartTime)
         continue
       }
       if (operation.op === "concat") {
         opResults.push({ op: operation.op, ...(await executeConcatOperation(contextManager, rlmSessionId, operation)) })
         tracer?.endSpan(opSpan!.spanId, "ok")
+        progressEmitter?.emitAfter(chatSessionId, rlmSessionId, opIndex, args.operations.length, operation.op, Date.now() - opStartTime)
         continue
       }
       if (operation.op === "reduce_llm") {
         opResults.push({ op: operation.op, ...(await executeReduceLlmOperation(contextManager, options, context, rlmSessionId, session, operation, deps)) })
         tracer?.endSpan(opSpan!.spanId, "ok")
+        progressEmitter?.emitAfter(chatSessionId, rlmSessionId, opIndex, args.operations.length, operation.op, Date.now() - opStartTime)
         continue
       }
       if (operation.op === "exec") {
@@ -89,15 +107,17 @@ export async function executeRlmPlan(
             rlmSessionId,
             operation,
             deps.replBackend,
-            options.config ?? RlmConfigSchema.parse({}),
+            rlmConfig,
           )),
         })
         tracer?.endSpan(opSpan!.spanId, "ok")
+        progressEmitter?.emitAfter(chatSessionId, rlmSessionId, opIndex, args.operations.length, operation.op, Date.now() - opStartTime)
         continue
       }
       if (operation.op === "write_var") {
         opResults.push({ op: operation.op, ...(await executeWriteVarOperation(contextManager, rlmSessionId, operation)) })
         tracer?.endSpan(opSpan!.spanId, "ok")
+        progressEmitter?.emitAfter(chatSessionId, rlmSessionId, opIndex, args.operations.length, operation.op, Date.now() - opStartTime)
         continue
       }
       if (operation.op === "final_var") {
@@ -116,6 +136,7 @@ export async function executeRlmPlan(
       const errorMsg = error instanceof Error ? error.message : String(error)
       tracer?.endSpan(opSpan!.spanId, "error", errorMsg)
       tracer?.endSpan(planSpan!.spanId, "error", errorMsg)
+      progressEmitter?.emitAfter(chatSessionId, rlmSessionId, opIndex, args.operations.length, operation.op, Date.now() - opStartTime, errorMsg)
       return toPlanResult(toErrorJson(rlmError(RlmErrorCode.PLAN_OP_FAILED, { message: errorMsg, op_index: opIndex, op: operation.op })))
     }
   }

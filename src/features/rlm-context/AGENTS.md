@@ -18,6 +18,8 @@ Disk-backed symbolic variable store for RLM (Recursive Language Model) sessions.
 | `index.ts` | Barrel export: `RlmContextManager`, types, path guards |
 | `coordinator.ts` | `RlmSessionCoordinator` singleton: binds sessionID → RlmBinding |
 | `turn-feedback.ts` | Metadata-only feedback: `shouldOffload()`, `offloadOutput()`, `applyFeedback()` |
+| `error-codes.ts` | `RlmErrorCode` enum (23 codes) and `RlmError` class |
+| `tracer.ts` | `RlmTracer` interface and span-based session tracing |
 
 ## STORE TYPES
 
@@ -325,6 +327,67 @@ Hidden variables store offloaded tool outputs. They are:
 
 The ref format is `hidden://{suffix}` where suffix maps to `__hidden_{suffix}` variable name.
 
+## ERROR TAXONOMY
+
+RLM uses a typed error taxonomy with 23 error codes defined in `RlmErrorCode`.
+
+| Code | Description |
+|------|-------------|
+| `SESSION_NOT_FOUND` | RLM session not found for this chat. |
+| `VARIABLE_NOT_FOUND` | The requested variable does not exist. |
+| `MANIFEST_REJECTED` | The variable manifest was rejected. |
+| `EXEC_UNTRUSTED` | Execution blocked: untrusted code. |
+| `EXEC_TIMEOUT` | Execution timed out. |
+| `EXEC_SANDBOX_VIOLATION` | Execution violated sandbox constraints. |
+| `EXEC_MEMORY_LIMIT` | Execution exceeded memory limit. |
+| `DEPTH_LIMIT` | Maximum recursion depth exceeded. |
+| `PLAN_OP_FAILED` | A plan operation failed. |
+| `SUBCALL_FAILED` | A subcall failed to complete. |
+| `OFFLOAD_FAILED` | Failed to offload work. |
+| `PERSISTENCE_FAILED` | Failed to persist session data. |
+| `INVALID_INPUT` | Invalid input arguments. |
+| `INVALID_REF` | Invalid variable reference. |
+| `INVALID_RANGE` | Invalid range specification. |
+| `INVALID_STORAGE_KIND` | Unsupported storage kind for this operation. |
+| `INVALID_PATTERN` | Invalid search pattern. |
+| `UNSUPPORTED_VARIABLE_KIND` | This variable kind is not supported for the requested operation. |
+| `REGEX_ERROR` | Invalid regular expression. |
+| `REGEX_GUARD_FAILURE` | Regular expression failed safety checks. |
+| `REGEX_TIMEOUT` | Regular expression matching timed out. |
+| `TOO_MANY_OPERATIONS` | Too many operations in a single request. |
+| `INTERNAL_ERROR` | An internal error occurred. |
+
+**Usage:**
+```typescript
+import { rlmError, RlmErrorCode, toErrorJson } from "./error-codes"
+
+// Create error
+const err = rlmError(RlmErrorCode.VARIABLE_NOT_FOUND, { name: "missing_var" })
+
+// Serialize for tool response
+return JSON.stringify(toErrorJson(err))
+```
+
+## SESSION TRACER
+
+The `RlmTracer` provides structured, span-based tracing for RLM operations.
+
+**Features:**
+- **Spans:** Track start/end time, status, and metadata for each operation
+- **Parent-Child Correlation:** Spans can be nested to represent recursive calls
+- **Output Modes:** `log` (to console), `file` (to `.jsonl`), or `both`
+- **Trace Tree:** Reconstruct the full execution tree from spans
+
+**Interface:**
+```typescript
+export interface RlmTracer {
+  startSpan(chatSessionId, rlmSessionId, operation, parentSpanId?): RlmSpan
+  endSpan(spanId, status, error?): void
+  getSpans(rlmSessionId): RlmSpan[]
+  getTrace(rootSpanId): SpanTreeNode | undefined
+}
+```
+
 ## CONFIGURATION
 
 RLM configuration lives under `experimental.rlm` in the plugin config:
@@ -340,3 +403,11 @@ RLM configuration lives under `experimental.rlm` in the plugin config:
 | `exec.trusted_only` | `boolean` | `true` | Require trusted binding for exec |
 | `exec.timeout_ms` | `number` | `30000` | Exec operation timeout |
 | `exec.print_limit_bytes` | `number` | `2048` | Print output limit before offloading |
+| `sandbox.enabled` | `boolean` | `true` | Enable `node:vm` sandbox for exec |
+| `sandbox.memory_limit_mb` | `number` | `128` | Memory limit for sandbox |
+| `sandbox.stack_depth_limit` | `number` | `1000` | Stack depth limit for sandbox |
+| `progress.enabled` | `boolean` | `true` | Enable progress events for plans |
+| `progress.throttle_ms` | `number` | `200` | Throttle for progress events |
+| `tracing.enabled` | `boolean` | `false` | Enable session tracing |
+| `tracing.output` | `string` | `"log"` | Trace output: `log`, `file`, or `both` |
+| `tracing.spans_dir` | `string` | `".sisyphus/rlm-traces"` | Directory for trace files |
