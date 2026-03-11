@@ -3,6 +3,7 @@ import type { ToolContext } from "@opencode-ai/plugin/tool"
 import type { RlmConfig } from "../../config/schema/experimental"
 import type { RlmContextManagerLike } from "../../features/rlm-context/coordinator"
 import { applyFeedback } from "../../features/rlm-context/turn-feedback"
+import { normalizeExecError } from "./repl-exec-errors"
 import { assertExecTrusted, resolveRlmExecConfig } from "./repl-exec-config"
 import {
   formatPrintedValue,
@@ -15,9 +16,11 @@ import {
   cleanupSyncSubcallSession,
   runSyncSubcall,
 } from "./subcall-runner"
+import { createVmSandboxRlmReplBackend } from "./vm-sandbox"
 
 type RlmSubcallModel = { providerID: string; modelID: string; variant?: string }
 type RlmLlmQueryOptions = { title?: string }
+type RlmReplBackendConfig = RlmConfig & { sandbox?: { enabled?: boolean } }
 type AsyncFunctionConstructor = new (
   ...args: string[]
 ) => (scope: Record<string, unknown>) => Promise<unknown>
@@ -54,6 +57,22 @@ export function clearRlmReplNamespace(sessionID?: string): void {
     return
   }
   sessionNamespaces.clear()
+}
+
+export function createRlmReplBackend(config: RlmReplBackendConfig): RlmReplBackend {
+  const backend = config.sandbox?.enabled
+    ? createVmSandboxRlmReplBackend()
+    : createTrustedLocalRlmReplBackend()
+
+  return {
+    execute: async (code, context) => {
+      try {
+        return await backend.execute(code, context)
+      } catch (error) {
+        throw normalizeExecError(error)
+      }
+    },
+  }
 }
 
 export function createTrustedLocalRlmReplBackend(

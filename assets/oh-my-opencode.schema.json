@@ -3586,6 +3586,34 @@
                 "max_sessions"
               ],
               "additionalProperties": false
+            },
+            "tracing": {
+              "type": "object",
+              "properties": {
+                "enabled": {
+                  "default": false,
+                  "type": "boolean"
+                },
+                "output": {
+                  "default": "log",
+                  "type": "string",
+                  "enum": [
+                    "log",
+                    "file",
+                    "both"
+                  ]
+                },
+                "spans_dir": {
+                  "default": ".sisyphus/rlm-traces",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "enabled",
+                "output",
+                "spans_dir"
+              ],
+              "additionalProperties": false
             }
           },
           "required": [

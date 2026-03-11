@@ -25,6 +25,14 @@ const RlmPersistenceConfigSchema = z.object({
   max_sessions: z.number().int().min(1).default(100),
 })
 
+const RlmTracingConfigSchema = z.object({
+  enabled: z.boolean().default(false),
+  output: z.enum(["log", "file", "both"]).default("log"),
+  spans_dir: z.string().default(".sisyphus/rlm-traces"),
+})
+
+export type RlmTracingConfig = z.infer<typeof RlmTracingConfigSchema>
+
 export const RlmConfigSchema = z.object({
   enabled: z.boolean().default(false),
   max_depth: z.number().int().min(1).max(5).default(1),
@@ -36,6 +44,7 @@ export const RlmConfigSchema = z.object({
   probe_max_lines: z.number().int().min(10).default(200),
   parallel: RlmParallelConfigSchema.optional(),
   persistence: RlmPersistenceConfigSchema.optional(),
+  tracing: RlmTracingConfigSchema.optional(),
 })
 
 export type RlmConfig = z.infer<typeof RlmConfigSchema>

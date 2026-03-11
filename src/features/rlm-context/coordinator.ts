@@ -6,6 +6,7 @@ import type {
   RlmSessionState,
 } from './types'
 import type { RlmPersistence } from './persistence'
+import type { RlmTracer } from './tracer'
 
 /**
  * Structural interface covering all methods used by RLM tools via coordinator binding.
@@ -33,6 +34,7 @@ export interface RlmBinding {
   query: string
   contextVariableName: string
   trusted: boolean
+  tracer?: RlmTracer
 }
 
 export class RlmSessionCoordinator {
@@ -45,6 +47,10 @@ export class RlmSessionCoordinator {
 
   bind(rootChatSessionId: string, binding: RlmBinding): void {
     this.bindings.set(rootChatSessionId, binding)
+    if (binding.tracer) {
+      const span = binding.tracer.startSpan(rootChatSessionId, binding.rlmSessionId, "coordinator.bind")
+      binding.tracer.endSpan(span.spanId, "ok")
+    }
     if (this.persistence) {
       this.persistence.persist(rootChatSessionId, binding, binding.manager).catch((error: unknown) => {
         const msg = error instanceof Error ? error.message : String(error)
@@ -58,6 +64,11 @@ export class RlmSessionCoordinator {
   }
 
   unbind(rootChatSessionId: string): void {
+    const binding = this.bindings.get(rootChatSessionId)
+    if (binding?.tracer) {
+      const span = binding.tracer.startSpan(rootChatSessionId, binding.rlmSessionId, "coordinator.unbind")
+      binding.tracer.endSpan(span.spanId, "ok")
+    }
     this.bindings.delete(rootChatSessionId)
   }
 }

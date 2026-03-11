@@ -36,35 +36,46 @@ export async function executeRlmPlan(
     return toPlanResult({ error: "session_not_found" })
   }
   const rlmSessionId = binding.rlmSessionId
+  const chatSessionId = context.sessionID
+  const tracer = binding.tracer
   const session = await requireSession(contextManager, rlmSessionId)
   const opResults: Array<Record<string, unknown>> = []
 
+  const planSpan = tracer?.startSpan(chatSessionId, rlmSessionId, "plan.execute")
+
   for (let opIndex = 0; opIndex < args.operations.length; opIndex += 1) {
     const operation = args.operations[opIndex]
+    const opSpan = tracer?.startSpan(chatSessionId, rlmSessionId, `plan.op.${operation.op}`, planSpan?.spanId)
 
     try {
       if (operation.op === "split") {
         opResults.push({ op: operation.op, ...(await executeSplitOperation(contextManager, rlmSessionId, operation)) })
+        tracer?.endSpan(opSpan!.spanId, "ok")
         continue
       }
       if (operation.op === "select") {
         opResults.push({ op: operation.op, ...(await executeSelectOperation(contextManager, rlmSessionId, operation)) })
+        tracer?.endSpan(opSpan!.spanId, "ok")
         continue
       }
       if (operation.op === "map_llm") {
         opResults.push({ op: operation.op, ...(await executeMapLlmOperation(contextManager, options, context, rlmSessionId, session, operation, deps)) })
+        tracer?.endSpan(opSpan!.spanId, "ok")
         continue
       }
       if (operation.op === "map_rlm") {
         opResults.push({ op: operation.op, ...(await executeMapRlmOperation(contextManager, options, context, rlmSessionId, session, operation, deps)) })
+        tracer?.endSpan(opSpan!.spanId, "ok")
         continue
       }
       if (operation.op === "concat") {
         opResults.push({ op: operation.op, ...(await executeConcatOperation(contextManager, rlmSessionId, operation)) })
+        tracer?.endSpan(opSpan!.spanId, "ok")
         continue
       }
       if (operation.op === "reduce_llm") {
         opResults.push({ op: operation.op, ...(await executeReduceLlmOperation(contextManager, options, context, rlmSessionId, session, operation, deps)) })
+        tracer?.endSpan(opSpan!.spanId, "ok")
         continue
       }
       if (operation.op === "exec") {
@@ -80,13 +91,17 @@ export async function executeRlmPlan(
             options.config ?? RlmConfigSchema.parse({}),
           )),
         })
+        tracer?.endSpan(opSpan!.spanId, "ok")
         continue
       }
       if (operation.op === "write_var") {
         opResults.push({ op: operation.op, ...(await executeWriteVarOperation(contextManager, rlmSessionId, operation)) })
+        tracer?.endSpan(opSpan!.spanId, "ok")
         continue
       }
       if (operation.op === "final_var") {
+        tracer?.endSpan(opSpan!.spanId, "ok")
+        tracer?.endSpan(planSpan!.spanId, "ok")
         return toPlanResult({
           terminal: false,
           halted: true,
@@ -97,15 +112,19 @@ export async function executeRlmPlan(
         })
       }
     } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : String(error)
+      tracer?.endSpan(opSpan!.spanId, "error", errorMsg)
+      tracer?.endSpan(planSpan!.spanId, "error", errorMsg)
       return toPlanResult({
         error: "plan_execution_error",
         op_index: opIndex,
         op: operation.op,
-        message: error instanceof Error ? error.message : String(error),
+        message: errorMsg,
       })
     }
   }
 
+  tracer?.endSpan(planSpan!.spanId, "ok")
   return toPlanResult({
     terminal: false,
     halted: false,

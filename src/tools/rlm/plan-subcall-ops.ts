@@ -40,6 +40,7 @@ export async function executeMapLlmOperation(
   deps: RlmPlanExecutorDeps,
 ): Promise<{ output_variable: string; mapped_count: number }> {
   const { sessionID: chatSessionId } = context
+  const tracer = coordinator.resolve(chatSessionId)?.tracer
   if (options.config?.parallel?.enabled) {
     return executeParallelMapLlm(contextManager, options, context, rlmSessionId, session, input, deps)
   }
@@ -47,6 +48,7 @@ export async function executeMapLlmOperation(
   const items = await contextManager.resolveManifestItems(rlmSessionId, input.variable_name)
   const outputNames: string[] = []
   for (let index = 0; index < items.length; index += 1) {
+    const itemSpan = tracer?.startSpan(chatSessionId, rlmSessionId, `map_llm.item.${index}`)
     const itemContent = await contextManager.readBlobContent(items[index])
     const subcall = await deps.runSyncSubcall({
       client: options.client,
@@ -66,6 +68,7 @@ export async function executeMapLlmOperation(
         { semanticType: "result" },
       )
       outputNames.push(outputName)
+      tracer?.endSpan(itemSpan!.spanId, "ok")
     } finally {
       if (subcall.sessionID) {
         deps.cleanupSyncSubcallSession(subcall.sessionID)
@@ -91,6 +94,7 @@ export async function executeMapRlmOperation(
   deps: RlmPlanExecutorDeps,
 ): Promise<{ output_variable: string; mapped_count: number; downgraded_to?: string }> {
   const { sessionID: chatSessionId } = context
+  const tracer = coordinator.resolve(chatSessionId)?.tracer
   if (session.depth + 1 >= session.maxDepth) {
     const downgraded = await executeMapLlmOperation(contextManager, options, context, rlmSessionId, session, input, deps)
     return { ...downgraded, downgraded_to: "map_llm" }
@@ -98,6 +102,7 @@ export async function executeMapRlmOperation(
   const items = await contextManager.resolveManifestItems(rlmSessionId, input.variable_name)
   const outputNames: string[] = []
   for (let index = 0; index < items.length; index += 1) {
+    const itemSpan = tracer?.startSpan(chatSessionId, rlmSessionId, `map_rlm.item.${index}`)
     const itemContent = await contextManager.readBlobContent(items[index])
     const subcall = await deps.runSyncSubcall({
       client: options.client,
@@ -130,6 +135,7 @@ export async function executeMapRlmOperation(
             query: session.query,
             contextVariableName: "item",
             trusted: parentBinding.trusted,
+            tracer: parentBinding.tracer,
           })
         }
       },
@@ -148,6 +154,7 @@ export async function executeMapRlmOperation(
         { semanticType: "result" },
       )
       outputNames.push(outputName)
+      tracer?.endSpan(itemSpan!.spanId, "ok")
     } finally {
       if (subcall.sessionID) {
         coordinator.unbind(subcall.sessionID)
@@ -175,6 +182,8 @@ export async function executeReduceLlmOperation(
   deps: RlmPlanExecutorDeps,
 ): Promise<{ output_variable: string; item_count: number }> {
   const { sessionID: chatSessionId } = context
+  const tracer = coordinator.resolve(chatSessionId)?.tracer
+  const reduceSpan = tracer?.startSpan(chatSessionId, rlmSessionId, "reduce_llm")
   const items = await contextManager.resolveManifestItems(rlmSessionId, input.variable_name)
   const parts: string[] = []
   for (const item of items) {
@@ -196,6 +205,7 @@ export async function executeReduceLlmOperation(
       { name: input.output_variable, content: resolveSubcallText(subcall) },
       { semanticType: "result" },
     )
+    tracer?.endSpan(reduceSpan!.spanId, "ok")
   } finally {
     if (subcall.sessionID) {
       deps.cleanupSyncSubcallSession(subcall.sessionID)

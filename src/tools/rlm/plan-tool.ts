@@ -9,6 +9,7 @@ import type {
 } from "../../features/rlm-context/types"
 import type { RlmConfig } from "../../config/schema/experimental"
 import { coordinator } from "../../features/rlm-context/coordinator"
+import { createTracer } from "../../features/rlm-context/tracer"
 import { executeRlmPlan } from "./plan-executor"
 import type { RlmPlanExecutorDeps } from "./plan-deps"
 import { RlmPlanInputSchema } from "./types"
@@ -91,6 +92,10 @@ export function createRlmPlanTool(
       const binding = coordinator.resolve(context.sessionID)
       if (!binding) {
         return toJson({ error: "session_not_found" })
+      }
+
+      if (!binding.tracer && options.config?.tracing) {
+        binding.tracer = createTracer(options.config.tracing)
       }
 
       const contextManager = binding.manager
