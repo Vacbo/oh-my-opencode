@@ -3488,6 +3488,48 @@
               "minimum": 100,
               "maximum": 9007199254740991
             },
+            "feedback": {
+              "type": "object",
+              "properties": {
+                "output_threshold_bytes": {
+                  "default": 2048,
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 9007199254740991
+                }
+              },
+              "required": [
+                "output_threshold_bytes"
+              ],
+              "additionalProperties": false
+            },
+            "exec": {
+              "type": "object",
+              "properties": {
+                "trusted_only": {
+                  "default": true,
+                  "type": "boolean"
+                },
+                "timeout_ms": {
+                  "default": 30000,
+                  "type": "integer",
+                  "minimum": 1000,
+                  "maximum": 9007199254740991
+                },
+                "print_limit_bytes": {
+                  "default": 2048,
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 9007199254740991
+                }
+              },
+              "required": [
+                "trusted_only",
+                "timeout_ms",
+                "print_limit_bytes"
+              ],
+              "additionalProperties": false
+            },
             "subcall_model": {
               "type": "string"
             },
@@ -3496,6 +3538,54 @@
               "type": "integer",
               "minimum": 10,
               "maximum": 9007199254740991
+            },
+            "parallel": {
+              "type": "object",
+              "properties": {
+                "enabled": {
+                  "default": false,
+                  "type": "boolean"
+                },
+                "max_concurrent": {
+                  "default": 4,
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 9007199254740991
+                },
+                "fallback_chain": {
+                  "default": [],
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              },
+              "required": [
+                "enabled",
+                "max_concurrent",
+                "fallback_chain"
+              ],
+              "additionalProperties": false
+            },
+            "persistence": {
+              "type": "object",
+              "properties": {
+                "enabled": {
+                  "default": false,
+                  "type": "boolean"
+                },
+                "max_sessions": {
+                  "default": 100,
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 9007199254740991
+                }
+              },
+              "required": [
+                "enabled",
+                "max_sessions"
+              ],
+              "additionalProperties": false
             }
           },
           "required": [
