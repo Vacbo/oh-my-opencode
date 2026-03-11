@@ -1,19 +1,13 @@
 import type { RlmConfig } from "../../config/schema/experimental"
 import { coordinator } from "../../features/rlm-context/coordinator"
-import type { RlmSessionState } from "../../features/rlm-context/types"
 import { applyFeedback } from "../../features/rlm-context/turn-feedback"
 import { shouldDistillOutput, distillOutput } from "./distill-decision"
 import { consumeFinalFromMessage } from "./final-consumer"
 
 const DEFAULT_DISTILL_THRESHOLD_TOKENS = 2000
 
-interface RlmContextManagerLike {
-  getSession: (sessionId: string) => RlmSessionState | undefined | Promise<RlmSessionState | undefined>
-}
-
 export function createRlmOutputDistillerHook(
   config?: RlmConfig,
-  rlmContextManager?: RlmContextManagerLike,
 ) {
   const thresholdTokens = config?.distill_threshold_tokens ?? DEFAULT_DISTILL_THRESHOLD_TOKENS
   const feedbackConfig = config ?? { enabled: false, max_depth: 1, context_storage_dir: ".sisyphus/rlm-contexts", distill_threshold_tokens: thresholdTokens, probe_max_lines: 200 }
@@ -24,18 +18,18 @@ export function createRlmOutputDistillerHook(
   ) => {
     if (input.tool === "rlm_finish") return
 
-    if (!rlmContextManager) return
+    const binding = coordinator.resolve(input.sessionID)
+    if (!binding) return
 
-    const session = await rlmContextManager.getSession(input.sessionID)
+    const session = await binding.manager.getSession(binding.rlmSessionId)
     if (!session) return
-
     if (typeof output.output !== "string") return
 
     output.output = await applyFeedback(
       output.output,
       input.sessionID,
       input.tool,
-      coordinator.resolve(input.sessionID),
+      binding,
       feedbackConfig,
     )
 

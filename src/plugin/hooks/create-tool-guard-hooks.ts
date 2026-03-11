@@ -22,7 +22,6 @@ import {
   OPENCODE_NATIVE_AGENTS_INJECTION_VERSION,
 } from "../../shared"
 import { safeCreateHook } from "../../shared/safe-create-hook"
-import type { RlmContextManager } from "../../features/rlm-context/manager"
 
 export type ToolGuardHooks = {
   commentChecker: ReturnType<typeof createCommentCheckerHooks> | null
@@ -44,9 +43,8 @@ export function createToolGuardHooks(args: {
   modelCacheState: ModelCacheState
   isHookEnabled: (hookName: HookName) => boolean
   safeHookEnabled: boolean
-  rlmContextManager?: RlmContextManager
 }): ToolGuardHooks {
-  const { ctx, pluginConfig, modelCacheState, isHookEnabled, safeHookEnabled, rlmContextManager } = args
+  const { ctx, pluginConfig, modelCacheState, isHookEnabled, safeHookEnabled } = args
   const safeHook = <T>(hookName: HookName, factory: () => T): T | null =>
     safeCreateHook(hookName, factory, { enabled: safeHookEnabled })
 
@@ -64,7 +62,7 @@ export function createToolGuardHooks(args: {
 
   const rlmOutputDistiller = isHookEnabled("rlm-output-distiller")
     ? safeHook("rlm-output-distiller", () =>
-        createRlmOutputDistillerHook(pluginConfig.experimental?.rlm, rlmContextManager))
+        createRlmOutputDistillerHook(pluginConfig.experimental?.rlm))
     : null
 
   let directoryAgentsInjector: ReturnType<typeof createDirectoryAgentsInjectorHook> | null = null

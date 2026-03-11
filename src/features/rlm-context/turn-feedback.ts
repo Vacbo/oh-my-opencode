@@ -71,6 +71,6 @@ export async function applyFeedback(
     return output
   }
 
-  const result = await offloadOutput(output, sessionID, toolName, binding.manager, config)
+  const result = await offloadOutput(output, binding.rlmSessionId, toolName, binding.manager, config)
   return JSON.stringify(result)
 }

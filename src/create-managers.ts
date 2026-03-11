@@ -7,7 +7,6 @@ import { BackgroundManager } from "./features/background-agent"
 import { SkillMcpManager } from "./features/skill-mcp-manager"
 import { initTaskToastManager } from "./features/task-toast-manager"
 import { TmuxSessionManager } from "./features/tmux-subagent"
-import { RlmContextManager } from "./features/rlm-context/manager"
 import { createConfigHandler } from "./plugin-handlers"
 import { log } from "./shared"
 
@@ -16,7 +15,6 @@ export type Managers = {
   backgroundManager: BackgroundManager
   skillMcpManager: SkillMcpManager
   configHandler: ReturnType<typeof createConfigHandler>
-  rlmContextManager?: RlmContextManager
 }
 
 export function createManagers(args: {
@@ -74,15 +72,10 @@ export function createManagers(args: {
     modelCacheState,
   })
 
-  const rlmContextManager = pluginConfig.experimental?.rlm?.enabled
-    ? new RlmContextManager()
-    : undefined
-
   return {
     tmuxSessionManager,
     backgroundManager,
     skillMcpManager,
     configHandler,
-    rlmContextManager,
   }
 }

@@ -45,7 +45,7 @@ export type ToolRegistryResult = {
 export function createToolRegistry(args: {
   ctx: PluginContext
   pluginConfig: OhMyOpenCodeConfig
-  managers: Pick<Managers, "backgroundManager" | "tmuxSessionManager" | "skillMcpManager" | "rlmContextManager">
+  managers: Pick<Managers, "backgroundManager" | "tmuxSessionManager" | "skillMcpManager">
   skillContext: SkillContext
   availableCategories: AvailableCategory[]
 }): ToolRegistryResult {
@@ -123,7 +123,7 @@ export function createToolRegistry(args: {
     : {}
 
   const rlmEnabled = pluginConfig.experimental?.rlm?.enabled ?? false
-  const rlmToolsRecord: Record<string, ToolDefinition> = rlmEnabled && managers.rlmContextManager
+  const rlmToolsRecord: Record<string, ToolDefinition> = rlmEnabled
     ? {
         rlm_probe: createRlmProbeTool(pluginConfig.experimental?.rlm),
         rlm_search: createRlmSearchTool(),

@@ -4,7 +4,6 @@ import type { LoadedSkill } from "./features/opencode-skill-loader/types"
 import type { BackgroundManager } from "./features/background-agent"
 import type { PluginContext } from "./plugin/types"
 import type { ModelCacheState } from "./plugin-state"
-import type { RlmContextManager } from "./features/rlm-context/manager"
 
 import { createCoreHooks } from "./plugin/hooks/create-core-hooks"
 import { createContinuationHooks } from "./plugin/hooks/create-continuation-hooks"
@@ -21,7 +20,6 @@ export function createHooks(args: {
   safeHookEnabled: boolean
   mergedSkills: LoadedSkill[]
   availableSkills: AvailableSkill[]
-  rlmContextManager?: RlmContextManager
 }) {
   const {
     ctx,
@@ -32,7 +30,6 @@ export function createHooks(args: {
     safeHookEnabled,
     mergedSkills,
     availableSkills,
-    rlmContextManager,
   } = args
 
   const core = createCoreHooks({
@@ -41,7 +38,6 @@ export function createHooks(args: {
     modelCacheState,
     isHookEnabled,
     safeHookEnabled,
-    rlmContextManager,
   })
 
   const continuation = createContinuationHooks({

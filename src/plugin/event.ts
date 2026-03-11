@@ -25,6 +25,7 @@ import { lspManager } from "../tools";
 
 import type { CreatedHooks } from "../create-hooks";
 import type { Managers } from "../create-managers";
+import { coordinator } from "../features/rlm-context/coordinator";
 import { pruneRecentSyntheticIdles } from "./recent-synthetic-idles";
 import { normalizeSessionStatusToIdle } from "./session-status-normalizer";
 
@@ -237,13 +238,15 @@ export function createEventHandler(args: {
       }
 
       if (sessionInfo?.id) {
-        // RLM context cleanup: manager-based + filesystem fallback
+        // RLM context cleanup: resolve via coordinator to reach the correct manager
         try {
-          if (managers.rlmContextManager) {
-            await managers.rlmContextManager.deleteSession(sessionInfo.id);
+          const binding = coordinator.resolve(sessionInfo.id);
+          if (binding) {
+            await binding.manager.deleteSession(binding.rlmSessionId);
+            coordinator.unbind(sessionInfo.id);
           }
         } catch (err) {
-          log("[event] RLM context manager cleanup error:", { sessionID: sessionInfo.id, error: err });
+          log("[event] RLM context cleanup error:", { sessionID: sessionInfo.id, error: err });
         }
 
         // Filesystem fallback cleanup
