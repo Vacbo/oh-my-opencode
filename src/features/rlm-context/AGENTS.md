@@ -1,10 +1,10 @@
 # src/features/rlm-context/ — Symbolic Context Store
 
-**Generated:** 2026-03-05
+**Generated:** 2026-03-12
 
 ## OVERVIEW
 
-Disk-backed symbolic variable store for RLM (Recursive Language Model) sessions. Manages session lifecycle, blob and manifest variables, and persistent context storage. The store is the foundation of paper-faithful RLM: context is never directly visible to the model; instead, the model interacts with it symbolically through bounded operations.
+Disk-backed symbolic variable store for RLM (Recursive Language Model) sessions. Manages session lifecycle, blob and manifest variables, persistent context storage, budget tracking, context rot detection, and trace distillation. The store is the foundation of paper-faithful RLM: context is never directly visible to the model; instead, the model interacts with it symbolically through bounded operations.
 
 ## FILE STRUCTURE
 
@@ -16,10 +16,15 @@ Disk-backed symbolic variable store for RLM (Recursive Language Model) sessions.
 | `path-guards.ts` | Path safety: `resolveSessionDir()`, `resolveSessionFilePath()`, traversal rejection |
 | `variable-input-parser.ts` | Input normalization: `parseBlobInput()`, `parseManifestInput()` |
 | `index.ts` | Barrel export: `RlmContextManager`, types, path guards |
-| `coordinator.ts` | `RlmSessionCoordinator` singleton: binds sessionID → RlmBinding |
+| `coordinator.ts` | `RlmSessionCoordinator` singleton: binds sessionID → RlmBinding with budget/tracer |
 | `turn-feedback.ts` | Metadata-only feedback: `shouldOffload()`, `offloadOutput()`, `applyFeedback()` |
-| `error-codes.ts` | `RlmErrorCode` enum (23 codes) and `RlmError` class |
+| `error-codes.ts` | `RlmErrorCode` enum (25 codes) and `RlmError` class |
 | `tracer.ts` | `RlmTracer` interface and span-based session tracing |
+| `budget.ts` | `SessionBudget`: subcall count, output bytes, wall-time tracking |
+| `context-rot.ts` | `detectContextRot()`: heuristic rot detection from traced trajectories |
+| `trace-distiller.ts` | `captureDistilledTrace()`: capture-only distillation for few-shot learning |
+| `persistence.ts` | `RlmPersistence`: session state persistence with retry mechanism |
+| `persistence-helpers.ts` | `withRetry()`: generic retry with exponential backoff for I/O operations |
 
 ## STORE TYPES
 
@@ -210,9 +215,13 @@ await manager.deleteSession(sessionId)
 
 ## SEMANTICS
 
-### `query` Persistence
+### `rootQuery` and `taskPrompt`
 
-The user's original query is stored in `RlmSessionState.query` and persists across the entire session. Used by plan operations for template expansion (`{{query}}`).
+Session state stores two query fields:
+- `rootQuery`: The original user query, propagated unchanged to all child sessions
+- `taskPrompt`: The per-session task prompt; in child sessions this is the map/reduce prompt with `{{item}}` expanded
+
+Plan template expansion: `{{rootQuery}}` maps to `rootQuery`, `{{query}}` maps to `taskPrompt`.
 
 ### `shouldDistill` Flag
 
@@ -240,15 +249,13 @@ Set only on child sessions. Allows cleanup to trace parent-child relationships.
 
 ## TESTING
 
-Tests in `manager.test.ts` cover:
-- Session init and idempotency
-- Blob creation from content and file
-- Manifest creation and order preservation
-- Variable lookup and listing
-- Blob content reading
-- Manifest resolution
-- Session deletion (memory and disk)
-- Path traversal rejection
+Tests cover:
+- **manager.test.ts**: Session init, blob/manifest round-trip, deletion, path safety, manifest integrity verification
+- **budget.test.ts**: Budget creation, wall-time tracking, subcall counting, output byte accumulation, depth reduction advisory
+- **context-rot.test.ts**: Scoring, indicator detection, recommendation thresholds, check interval cadence
+- **trace-distiller.test.ts**: Capture gating (disabled/non-terminal/error), field extraction, disk storage, silent fail
+- **persistence.test.ts**: Retry mechanism (ENOENT/EACCES/EBUSY/EAGAIN), exponential backoff, permanent error bypass
+- **error-codes.test.ts**: All 25 error codes, `RlmError` class, `toErrorJson` serialization
 
 ## COORDINATOR PATTERN
 
@@ -261,10 +268,19 @@ class RlmSessionCoordinator {
   bind(rootChatSessionId: string, binding: RlmBinding): void
   resolve(rootChatSessionId: string): RlmBinding | undefined
   unbind(rootChatSessionId: string): void
+  // Budget management (Phase 4)
+  initializeRootBudget(rootChatSessionId: string, budget: SessionBudget): SessionBudget | undefined
+  getRootBudget(rootChatSessionId: string): SessionBudget | undefined
+  incrementSubcallCount(rootChatSessionId: string): number | undefined
+  addOutputBytes(rootChatSessionId: string, bytes: number): number | undefined
+  getBudgetSummary(rootChatSessionId: string): SessionBudgetSummary | undefined
+  setPersistence(p: RlmPersistence): void
 }
 
 export const coordinator = new RlmSessionCoordinator()
 ```
+
+**Budget sharing:** Child bindings reuse the root `SessionBudget` reference via `rootRlmSessionId`. The coordinator resolves the root chat session from the root RLM session ID to find the shared budget.
 
 ### RlmBinding
 
@@ -272,14 +288,20 @@ export const coordinator = new RlmSessionCoordinator()
 interface RlmBinding {
   manager: RlmContextManagerLike    // Context manager for variable operations
   rlmSessionId: string              // RLM session ID (may differ from chat session)
+  rootRlmSessionId?: string         // Root session ID for budget sharing across children
   depth: number                     // Current recursion depth (0 = root)
-  query: string                     // Original user query
+  rootQuery: string                 // Original user query (propagated to all children)
+  taskPrompt: string                // Per-session task prompt (may differ in children)
   contextVariableName: string       // Name of the pre-injected context variable
   trusted: boolean                  // Whether exec operations are permitted
+  budget?: SessionBudget            // Root-owned budget, shared by children via rootRlmSessionId
+  tracer?: RlmTracer                // Optional tracer for span-based operation tracking
 }
 ```
 
 All four tools resolve their binding via `coordinator.resolve(context.sessionID)`. Tools return `{ error: "session_not_found" }` when no binding exists.
+
+**rootQuery vs taskPrompt:** The `rootQuery` is the original user query and stays constant across all child sessions. The `taskPrompt` is the per-session prompt (e.g., for `map_rlm` children, it contains the per-item prompt). Template expansion uses `{{rootQuery}}` and `{{query}}` (which maps to `taskPrompt`).
 
 ### Lifecycle
 
@@ -329,7 +351,7 @@ The ref format is `hidden://{suffix}` where suffix maps to `__hidden_{suffix}` v
 
 ## ERROR TAXONOMY
 
-RLM uses a typed error taxonomy with 23 error codes defined in `RlmErrorCode`.
+RLM uses a typed error taxonomy with 25 error codes defined in `RlmErrorCode`.
 
 | Code | Description |
 |------|-------------|
@@ -355,6 +377,8 @@ RLM uses a typed error taxonomy with 23 error codes defined in `RlmErrorCode`.
 | `REGEX_GUARD_FAILURE` | Regular expression failed safety checks. |
 | `REGEX_TIMEOUT` | Regular expression matching timed out. |
 | `TOO_MANY_OPERATIONS` | Too many operations in a single request. |
+| `MANIFEST_INTEGRITY_ERROR` | Manifest references missing blob files on disk. |
+| `MANIFEST_CORRUPT_ERROR` | Manifest JSON is invalid or not an array of strings. |
 | `INTERNAL_ERROR` | An internal error occurred. |
 
 **Usage:**
@@ -367,6 +391,76 @@ const err = rlmError(RlmErrorCode.VARIABLE_NOT_FOUND, { name: "missing_var" })
 // Serialize for tool response
 return JSON.stringify(toErrorJson(err))
 ```
+
+## BUDGET BROKER
+
+The budget module tracks resource consumption across an RLM session tree.
+
+### `SessionBudget`
+
+```typescript
+interface SessionBudget {
+  subcall_count: number          // Total subcalls made
+  output_bytes: number           // Total output bytes accumulated
+  wall_time_ms: number           // Wall time since session start
+  wall_time_start_ms: number     // Start timestamp (performance.now())
+  max_subcalls: number           // From config.session_budget (default 20)
+  max_output_bytes: number       // Default 10MB
+  max_wall_time_ms: number       // Default 300000 (5 min)
+  rootRlmSessionId: string       // Root session owning this budget
+}
+```
+
+**Functions:**
+- `createSessionBudget(config, rootRlmSessionId, now)`: initialize with config defaults
+- `updateWallTimeMs(budget, now)`: recalculate elapsed wall time
+- `incrementSubcallCount(budget, now)`: increment and update wall time
+- `addOutputBytes(budget, bytes, now)`: accumulate output and update wall time
+- `toSessionBudgetSummary(budget, now)`: compact `{ subcall_count, output_bytes, wall_time_ms }`
+- `shouldReduceDepth(budget, session, now)`: returns `true` when any resource usage exceeds 80%
+
+**Advisory only:** The budget broker does not enforce limits directly. Enforcement happens at call sites (e.g., `sub_rlm` checks `subcall_limit`, plan results include budget summary).
+
+## CONTEXT ROT DETECTION
+
+Heuristic detection of unproductive RLM trajectories based on traced spans.
+
+### `detectContextRot(spans, config)`
+
+Analyzes operation spans to produce a `ContextRotSignal`:
+
+| Indicator | Weight | Trigger |
+|-----------|--------|---------|
+| `repeated_searches` | 0.25 | Same search pattern used > 2 times |
+| `repeated_probes` | 0.30 | Same variable probed > 3 times |
+| `no_new_vars` | 0.20 | 5+ consecutive operations create no new variables |
+| `rising_ref_count` | 0.35 | 3+ unresolved hidden refs with zero resolutions |
+
+**Score to recommendation:**
+- `0`: `healthy`
+- `< warning_threshold` (default 0.5): `monitor`
+- `< 0.9`: `warning`
+- `>= 0.9`: `suggest_finish`
+
+### `shouldCheckContextRot(operationCount, config)`
+
+Returns `true` when `operationCount % check_interval === 0` (default interval: 5). Plan executor emits observational `plan.context_rot` spans at this cadence using cumulative traced operations.
+
+## TRACE DISTILLATION
+
+Capture-only distillation of successful RLM traces for future few-shot learning.
+
+### `captureDistilledTrace(sessionId, spans, options, config)`
+
+**Captures when:** `distill_enabled && terminal && last span status === "ok"`
+
+**Returns:** `DistilledTrace` with `sessionId`, `rootQuery`, `taskPrompt`, `finalAnswer`, `depth`, `maxDepth`, `model`, `provider`, `operations[]`, `capturedAt`
+
+**Storage:** `{spans_dir}/distilled/{sessionId}.json`
+
+**Skips when:** distill disabled, non-terminal, empty spans, last span has error status. Silent fail on file write errors (matches tracer.ts pattern).
+
+**Scope:** Capture only. No retrieval, similarity matching, or prompt injection.
 
 ## SESSION TRACER
 
@@ -381,12 +475,14 @@ The `RlmTracer` provides structured, span-based tracing for RLM operations.
 **Interface:**
 ```typescript
 export interface RlmTracer {
-  startSpan(chatSessionId, rlmSessionId, operation, parentSpanId?): RlmSpan
+  startSpan(chatSessionId, rlmSessionId, operation, parentSpanId?, metadata?): RlmSpan
   endSpan(spanId, status, error?): void
   getSpans(rlmSessionId): RlmSpan[]
   getTrace(rootSpanId): SpanTreeNode | undefined
 }
 ```
+
+**Span metadata (Phase 4):** Spans optionally include `operation_name`, `operation_args`, and `variables_created` for context rot detection and trace distillation.
 
 ## CONFIGURATION
 
@@ -408,6 +504,21 @@ RLM configuration lives under `experimental.rlm` in the plugin config:
 | `sandbox.stack_depth_limit` | `number` | `1000` | Stack depth limit for sandbox |
 | `progress.enabled` | `boolean` | `true` | Enable progress events for plans |
 | `progress.throttle_ms` | `number` | `200` | Throttle for progress events |
+| `progress.streaming_enabled` | `boolean` | `true` | Enable streaming partial results |
+| `progress.streaming_throttle_ms` | `number` | `100` | Throttle for streaming events |
 | `tracing.enabled` | `boolean` | `false` | Enable session tracing |
 | `tracing.output` | `string` | `"log"` | Trace output: `log`, `file`, or `both` |
 | `tracing.spans_dir` | `string` | `".sisyphus/rlm-traces"` | Directory for trace files |
+| `tracing.distill_enabled` | `boolean` | `false` | Enable trace distillation capture |
+| `session_budget` | `number` | `20` | Max subcalls per root session |
+| `subcall_limit` | `number` | `10` | Max subcalls per `sub_rlm()` |
+| `subcall_backoff_multiplier` | `number` | `1.5` | Exponential backoff multiplier |
+| `subcall_jitter_percent` | `number` | `15` | Jitter percentage for polling |
+| `subcall_max_interval_ms` | `number` | `5000` | Max polling interval |
+| `parallel_map_concurrency` | `number` | `3` | Max concurrent map items |
+| `context_rot.enabled` | `boolean` | `false` | Enable context rot detection |
+| `context_rot.check_interval` | `number` | `5` | Check every N operations |
+| `context_rot.warning_threshold` | `number` | `0.5` | Score threshold for warning |
+| `cache.enabled` | `boolean` | `true` | Enable sibling cache reads |
+| `cache.ttl_hours` | `number` | `24` | Cache entry time-to-live |
+| `benchmark_datasets_dir` | `string` | `".sisyphus/rlm-benchmarks"` | Directory for benchmark datasets |

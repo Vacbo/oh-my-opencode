@@ -44,7 +44,7 @@ function createConfig(overrides: Partial<RlmSandboxConfig> = {}): RlmSandboxConf
 function setupSession(sessionID: string): TestSession {
   const manager = new InMemoryRlmManager()
   const rlmSessionId = testRlmSessionId(sessionID)
-  manager.seedSession(createSession(rlmSessionId, "test query", 0, 3))
+  manager.seedSession(createSession(rlmSessionId, "test query", "test query", 0, 3))
   manager.createBlobVariable(rlmSessionId, { name: "context", content: "seed context" })
   bindTestCoordinator(sessionID, manager)
   const session = { sessionID, rlmSessionId, manager }
@@ -56,7 +56,8 @@ function createExecContext(session: TestSession, config: RlmSandboxConfig) {
   return {
     sessionID: session.sessionID,
     rlmSessionId: session.rlmSessionId,
-    query: "test query",
+    rootQuery: "test query",
+    taskPrompt: "test query",
     manager: session.manager,
     toolContext: createToolContext(session.sessionID),
     client: dummyClient,

@@ -287,6 +287,8 @@ ${recursionNote}
 3. **Plan:** Use \`rlm_plan\` to batch transformations (split, map, reduce).
 4. **Finish:** Use \`rlm_finish\` to return the final answer.
 
+${buildStrategyGuidance()}
+
 ## Key Principles
 
 - **Symbolic, not literal:** You work with variable names and metadata, not raw context.
@@ -295,6 +297,36 @@ ${recursionNote}
 - **Deterministic recursion:** Depth is bounded; leaf sub-calls are plain LMs by default.
 - **Clear terminal:** Only \`rlm_finish\` (or inline \`FINAL\`/\`FINAL_VAR\`) ends the session.
 `;
+}
+
+function buildStrategyGuidance(): string {
+  return `## Strategy Guidance
+
+Choose your approach based on what you know about the context:
+
+### 1. Peeking
+**When to use:** You need to understand context structure, format, or size before deciding on a strategy.
+**Operations:** \`rlm_probe\` with \`head\`, \`tail\`, \`slice\`, \`stats\`, \`schema\`.
+**Example:** \`stats\` to check size, then \`head 50\` to see the beginning, then \`schema\` to detect structure.
+**When NOT to use:** You already know the structure, or the task requires processing the entire context.
+
+### 2. Grepping
+**When to use:** You need to find specific patterns, keywords, or code constructs within the context.
+**Operations:** \`rlm_search\` with literal or regex mode, then \`rlm_probe slice\` to expand around matches.
+**Example:** Search for \`"function.*export"\` in regex mode, then slice around each match for full context.
+**When NOT to use:** You need to process all content (use Partition+Map), or the context is small enough to peek entirely.
+
+### 3. Partition+Map
+**When to use:** The context is too large to process at once, or the task requires applying the same operation to every section.
+**Operations:** \`rlm_plan\` with \`split\` → \`map_llm\` (or \`map_rlm\`) → \`concat\` or \`reduce_llm\`.
+**Example:** Split into 500-line chunks, map a summarization prompt over each, reduce into a final summary.
+**When NOT to use:** Only a specific section is relevant (use Grepping to locate it first), or the context fits in a single LM call.
+
+### 4. Summarization
+**When to use:** You need to compress or distill information — extracting key points, generating overviews, or reducing noise.
+**Operations:** \`rlm_plan\` with \`map_llm\` (extract per-chunk) → \`reduce_llm\` (synthesize), or single \`reduce_llm\` on a manifest.
+**Example:** Map "extract key findings" over chunks, then reduce with "synthesize into a coherent summary."
+**When NOT to use:** The task requires exact content (code generation, search), or the answer is a specific fact you can grep for.`;
 }
 
 function buildKeywordAliasPrompt(

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test"
-import { initRlmSession } from "./init-session"
+import { createRlmBinding, initRlmSession } from "./init-session"
 import type { RlmContextManagerForInit } from "./init-session"
 import type {
   RlmBlobVariable,
@@ -18,7 +18,8 @@ function createMockContextManager(): RlmContextManagerForInit {
         depth: options.depth ?? 0,
         maxDepth: options.maxDepth,
         contextDir: options.contextDir,
-        query: options.query,
+        rootQuery: options.rootQuery,
+        taskPrompt: options.taskPrompt,
         shouldDistill: options.shouldDistill ?? false,
         parentSessionId: options.parentSessionId,
         variables: new Map(),
@@ -106,6 +107,7 @@ describe("initRlmSession", () => {
       const result = await initRlmSession(manager, {
         sessionId: "ses-child",
         query: "summarize chunk",
+        rootQuery: "root question",
         content: "chunk content",
         depth: 1,
         parentSessionId: "ses-parent",
@@ -115,6 +117,27 @@ describe("initRlmSession", () => {
 
       expect(result.depth).toBe(1)
       expect(result.parentSessionId).toBe("ses-parent")
+      const stored = manager.getSession("ses-child") as RlmSessionState | undefined
+      expect(stored?.rootQuery).toBe("root question")
+      expect(stored?.taskPrompt).toBe("summarize chunk")
+    })
+  })
+
+  describe("#given root session initialization", () => {
+    it("#when query is provided #then rootQuery and taskPrompt match", async () => {
+      const manager = createMockContextManager()
+
+      await initRlmSession(manager, {
+        sessionId: "ses-root",
+        query: "root prompt",
+        content: "context",
+        maxDepth: 2,
+        contextDir: "/tmp/rlm",
+      })
+
+      const stored = manager.getSession("ses-root") as RlmSessionState | undefined
+      expect(stored?.rootQuery).toBe("root prompt")
+      expect(stored?.taskPrompt).toBe("root prompt")
     })
   })
 
@@ -161,17 +184,18 @@ describe("initRlmSession", () => {
         contextDir: "/tmp/rlm",
       })
 
-      expect(result.sessionId).toBe("ses-metadata")
-      expect(result.depth).toBe(0)
-      expect(result.maxDepth).toBe(2)
-      expect(result.query).toBe("summarize this")
-      expect(result.shouldDistill).toBe(false)
+        expect(result.sessionId).toBe("ses-metadata")
+        expect(result.depth).toBe(0)
+        expect(result.maxDepth).toBe(2)
+        expect(result.rootQuery).toBe("summarize this")
+        expect(result.taskPrompt).toBe("summarize this")
+        expect(result.shouldDistill).toBe(false)
       expect(result.contextMetadata.contextVariableName).toBe("context")
       expect(result.contextMetadata.contextSize).toBeGreaterThan(0)
       expect(result.contextMetadata.contextType).toBe("content")
       expect(result.contextMetadata.lineCount).toBe(3)
 
-      const resultAsRecord = result as Record<string, unknown>
+      const resultAsRecord = result as unknown as Record<string, unknown>
       expect(resultAsRecord["content"]).toBeUndefined()
       expect(resultAsRecord["file_path"]).toBeUndefined()
     })
@@ -211,7 +235,32 @@ describe("initRlmSession", () => {
         contextDir: "/tmp/rlm",
       })
 
-      expect(result.query).toBe("first init")
+      expect(result.rootQuery).toBe("first init")
+      expect(result.taskPrompt).toBe("first init")
+    })
+  })
+
+  describe("#given init result metadata", () => {
+    it("#when creating a coordinator binding #then preserves rootQuery and taskPrompt", () => {
+      const manager = createMockContextManager()
+
+      const binding = createRlmBinding(manager as never, {
+        sessionId: "ses-root",
+        depth: 0,
+        maxDepth: 2,
+        rootQuery: "root prompt",
+        taskPrompt: "task prompt",
+        shouldDistill: false,
+        contextMetadata: {
+          contextVariableName: "context",
+          contextSize: 12,
+          contextType: "content",
+          lineCount: 1,
+        },
+      }, true)
+
+      expect(binding.rootQuery).toBe("root prompt")
+      expect(binding.taskPrompt).toBe("task prompt")
     })
   })
 })

@@ -1,10 +1,12 @@
 import type { RlmBlobVariable } from "../../features/rlm-context/types"
 import type { RlmContextManagerForPlan } from "./plan-tool"
+import type { RlmPlanSplitCodeOp } from "./types"
 import {
   chunkText,
   itemVariableName,
   requireBlob,
 } from "./plan-utils"
+import { splitByAst } from "./split-strategies"
 
 export async function executeSplitOperation(
   contextManager: RlmContextManagerForPlan,
@@ -13,6 +15,38 @@ export async function executeSplitOperation(
 ): Promise<{ output_variable: string; item_count: number }> {
   const source = await requireBlob(contextManager, rlmSessionId, input.variable_name)
   const chunks = chunkText(await contextManager.readBlobContent(source), input.chunk_size)
+  const chunkNames: string[] = []
+
+  for (let i = 0; i < chunks.length; i += 1) {
+    const chunkName = itemVariableName(input.output_variable, i)
+    await contextManager.createBlobVariable(
+      rlmSessionId,
+      { name: chunkName, content: chunks[i] },
+      { semanticType: "derived" },
+    )
+    chunkNames.push(chunkName)
+  }
+
+  await contextManager.createManifestVariable(
+    rlmSessionId,
+    { name: input.output_variable, variableNames: chunkNames },
+    { semanticType: "derived" },
+  )
+
+  return { output_variable: input.output_variable, item_count: chunkNames.length }
+}
+
+export async function executeSplitCodeOperation(
+  contextManager: RlmContextManagerForPlan,
+  rlmSessionId: string,
+  input: RlmPlanSplitCodeOp,
+): Promise<{ output_variable: string; item_count: number }> {
+  const source = await requireBlob(contextManager, rlmSessionId, input.variable_name)
+  const chunks = await splitByAst(
+    await contextManager.readBlobContent(source),
+    input.language,
+    input.granularity,
+  )
   const chunkNames: string[] = []
 
   for (let i = 0; i < chunks.length; i += 1) {

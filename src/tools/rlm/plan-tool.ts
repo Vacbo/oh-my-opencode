@@ -15,15 +15,14 @@ import { executeRlmPlan } from "./plan-executor"
 import type { RlmPlanExecutorDeps } from "./plan-deps"
 import { RlmPlanInputSchema } from "./types"
 
-const MAX_PLAN_OPERATIONS = 50
-
 export interface RlmContextManagerForPlan {
   initSession(
     sessionId: string,
     options: {
       maxDepth: number
       contextDir: string
-      query: string
+      rootQuery: string
+      taskPrompt: string
       depth?: number
       parentSessionId?: string
       shouldDistill?: boolean
@@ -59,6 +58,12 @@ export interface RlmPlanToolOptions {
   directory: string
   subcallAgent?: string
   subcallModel?: { providerID: string; modelID: string; variant?: string }
+  siblingCache?: {
+    cacheDir?: string
+    version?: string
+    temperature?: number
+    systemPrompt?: string
+  }
   deps?: Partial<RlmPlanExecutorDeps>
   config?: RlmConfig
 }
@@ -111,9 +116,10 @@ export function createRlmPlanTool(
         return toJson(toErrorJson(rlmError(RlmErrorCode.INVALID_INPUT)))
       }
 
-      if (parsed.data.operations.length > MAX_PLAN_OPERATIONS) {
+      const maxOperations = options.config?.plan_max_operations ?? 50
+      if (parsed.data.operations.length > maxOperations) {
         return toJson(toErrorJson(rlmError(RlmErrorCode.TOO_MANY_OPERATIONS, {
-          max_operations: MAX_PLAN_OPERATIONS,
+          max_operations: maxOperations,
           operation_count: parsed.data.operations.length,
         })))
       }

@@ -4,12 +4,16 @@ const RlmProbeHeadSchema = z.object({
   operation: z.literal("head"),
   variable_name: z.string(),
   lines: z.number().int().min(1).optional(),
+  max_bytes: z.number().int().min(1).optional(),
+  max_tokens: z.number().int().min(1).optional(),
 })
 
 const RlmProbeTailSchema = z.object({
   operation: z.literal("tail"),
   variable_name: z.string(),
   lines: z.number().int().min(1).optional(),
+  max_bytes: z.number().int().min(1).optional(),
+  max_tokens: z.number().int().min(1).optional(),
 })
 
 const RlmProbeSliceSchema = z.object({
@@ -17,6 +21,8 @@ const RlmProbeSliceSchema = z.object({
   variable_name: z.string(),
   start: z.number().int().min(0),
   end: z.number().int().min(0),
+  max_bytes: z.number().int().min(1).optional(),
+  max_tokens: z.number().int().min(1).optional(),
 })
 
 const RlmProbeStatsSchema = z.object({
@@ -65,6 +71,21 @@ const RlmPlanSplitOpSchema = z.object({
   chunk_size: z.number().int().min(1),
   output_variable: z.string(),
 })
+
+export const RlmPlanSplitCodeLanguageSchema = z.enum(["typescript", "python", "go"])
+export type RlmPlanSplitCodeLanguage = z.infer<typeof RlmPlanSplitCodeLanguageSchema>
+
+export const RlmPlanSplitCodeGranularitySchema = z.enum(["function", "class", "block"])
+export type RlmPlanSplitCodeGranularity = z.infer<typeof RlmPlanSplitCodeGranularitySchema>
+
+export const RlmPlanSplitCodeOpSchema = z.object({
+  op: z.literal("split_code"),
+  variable_name: z.string(),
+  language: RlmPlanSplitCodeLanguageSchema,
+  output_variable: z.string(),
+  granularity: RlmPlanSplitCodeGranularitySchema.optional(),
+})
+export type RlmPlanSplitCodeOp = z.infer<typeof RlmPlanSplitCodeOpSchema>
 
 const RlmPlanSelectOpSchema = z.object({
   op: z.literal("select"),
@@ -120,6 +141,7 @@ const RlmPlanFinalVarOpSchema = z.object({
 
 export const RlmPlanOperationSchema = z.discriminatedUnion("op", [
   RlmPlanSplitOpSchema,
+  RlmPlanSplitCodeOpSchema,
   RlmPlanSelectOpSchema,
   RlmPlanMapLlmOpSchema,
   RlmPlanMapRlmOpSchema,
@@ -152,7 +174,9 @@ export type RlmFinishInput = z.infer<typeof RlmFinishInputSchema>
 export const InitRlmSessionInputSchema = z
   .object({
     sessionId: z.string(),
-    query: z.string(),
+    query: z.string().optional(),
+    rootQuery: z.string().optional(),
+    taskPrompt: z.string().optional(),
     content: z.string().optional(),
     file_path: z.string().optional(),
     depth: z.number().int().min(0).optional(),
@@ -164,6 +188,10 @@ export const InitRlmSessionInputSchema = z
   .refine(
     (data) => (data.content !== undefined) !== (data.file_path !== undefined),
     { message: "Exactly one of 'content' or 'file_path' must be provided" },
+  )
+  .refine(
+    (data) => data.query !== undefined || (data.rootQuery !== undefined && data.taskPrompt !== undefined),
+    { message: "Either 'query' or both 'rootQuery' and 'taskPrompt' must be provided" },
   )
 
 export type InitRlmSessionInput = z.infer<typeof InitRlmSessionInputSchema>

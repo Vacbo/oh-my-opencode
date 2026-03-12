@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync } from "node:fs"
 import { join } from "node:path"
 import { tmpdir } from "node:os"
 import type { ToolContext } from "@opencode-ai/plugin/tool"
-import type { RlmConfig } from "../../config/schema/experimental"
+import { RlmConfigSchema, type RlmConfig } from "../../config/schema/experimental"
 import { RlmContextManager } from "./manager"
 import { coordinator } from "./coordinator"
 import { createRlmProbeTool } from "../../tools/rlm/probe-tool"
@@ -12,13 +12,10 @@ import { createRlmPlanTool } from "../../tools/rlm/tools"
 import { createRlmFinishTool } from "../../tools/rlm/finish-tool"
 import { initRlmSession } from "../../tools/rlm/init-session"
 
-const defaultConfig: RlmConfig = {
+const defaultConfig: RlmConfig = RlmConfigSchema.parse({
   enabled: true,
   max_depth: 3,
-  context_storage_dir: ".sisyphus/rlm-contexts",
-  distill_threshold_tokens: 2000,
-  probe_max_lines: 200,
-}
+})
 
 // Test helpers
 function createToolContext(sessionID: string): ToolContext {
@@ -49,7 +46,8 @@ describe("RLM Integration Tests", () => {
       manager,
       rlmSessionId: sessionId,
       depth: 0,
-      query: "test",
+      rootQuery: "test",
+      taskPrompt: "test",
       contextVariableName: "context",
       trusted: true,
     })
@@ -78,7 +76,8 @@ describe("RLM Integration Tests", () => {
       await manager.initSession("ses-root", {
         contextDir,
         maxDepth: 2,
-        query: "Test query",
+        rootQuery: "Test query",
+        taskPrompt: "Test query",
       })
       bindSession("ses-root", manager)
 
@@ -105,7 +104,7 @@ describe("RLM Integration Tests", () => {
       // Step 1: Initialize session (simulating /rlm command)
       const initResult = await initRlmSession(manager, {
         sessionId,
-        query: "Summarize the context",
+        rootQuery: "Summarize the context", taskPrompt: "Summarize the context",
         content: "line1\nline2\nline3\nline4\nline5\nline6",
         maxDepth: 1,
         contextDir,
@@ -115,7 +114,8 @@ describe("RLM Integration Tests", () => {
       expect(initResult.sessionId).toBe(sessionId)
       expect(initResult.depth).toBe(0)
       expect(initResult.maxDepth).toBe(1)
-      expect(initResult.query).toBe("Summarize the context")
+      expect(initResult.rootQuery).toBe("Summarize the context")
+      expect(initResult.taskPrompt).toBe("Summarize the context")
 
       // Step 2: Use rlm_probe to inspect context
       const probeTool = createRlmProbeTool()
@@ -186,7 +186,7 @@ messages: [],
       await manager.initSession(sessionId, {
         contextDir,
         maxDepth: 1,
-        query: "Root query",
+        rootQuery: "Root query", taskPrompt: "Root query",
         depth: 0,
       })
       bindSession(sessionId, manager)
@@ -242,7 +242,7 @@ messages: [],
       await manager.initSession(sessionId, {
         contextDir,
         maxDepth: 2,
-        query: "Root query",
+        rootQuery: "Root query", taskPrompt: "Root query",
         depth: 0,
       })
       bindSession(sessionId, manager)
@@ -272,7 +272,8 @@ messages: [],
             await manager.initSession(input.sessionId, {
               contextDir,
               maxDepth: input.maxDepth,
-              query: input.query,
+              rootQuery: input.rootQuery ?? input.query ?? "",
+              taskPrompt: input.taskPrompt ?? input.query ?? "",
               depth: input.depth,
               parentSessionId: input.parentSessionId,
             })
@@ -285,9 +286,10 @@ messages: [],
 
             return {
               sessionId: input.sessionId,
-              depth: input.depth,
+              depth: input.depth ?? 0,
               maxDepth: input.maxDepth,
-              query: input.query,
+              rootQuery: input.rootQuery ?? input.query ?? "",
+              taskPrompt: input.taskPrompt ?? input.query ?? "",
               shouldDistill: false,
               parentSessionId: input.parentSessionId,
               contextMetadata: {
@@ -302,7 +304,7 @@ messages: [],
             childSessionCreated = true
             return {
               ok: true,
-              sessionID: input.sessionID,
+              sessionID: "child-session-id",
               textOutput: "Child RLM result",
               terminalPayload: { final_answer: "child answer", terminal: true },
               messages: [],
@@ -344,7 +346,7 @@ messages: [],
       await manager.initSession(sessionId, {
         contextDir,
         maxDepth: 2,
-        query: "Test cleanup",
+        rootQuery: "Test cleanup", taskPrompt: "Test cleanup",
       })
 
       // Create variables
@@ -375,7 +377,7 @@ messages: [],
       await manager.initSession(sessionId, {
         contextDir,
         maxDepth: 1,
-        query: "Test distillation",
+        rootQuery: "Test distillation", taskPrompt: "Test distillation",
         shouldDistill: true,
       })
 
@@ -402,7 +404,7 @@ messages: [],
       await manager.initSession(sessionId, {
         contextDir,
         maxDepth: 1,
-        query: "Test no distillation",
+        rootQuery: "Test no distillation", taskPrompt: "Test no distillation",
         shouldDistill: false,
       })
 
@@ -430,7 +432,7 @@ messages: [],
       await manager.initSession(sessionId, {
         contextDir,
         maxDepth: 1,
-        query: "Test manifest",
+        rootQuery: "Test manifest", taskPrompt: "Test manifest",
       })
       bindSession(sessionId, manager)
 
@@ -480,7 +482,7 @@ messages: [],
       await manager.initSession(sessionId, {
         contextDir,
         maxDepth: 1,
-        query: "Test finish",
+        rootQuery: "Test finish", taskPrompt: "Test finish",
       })
       bindSession(sessionId, manager)
 
@@ -512,7 +514,7 @@ messages: [],
       await manager.initSession(sessionId, {
         contextDir,
         maxDepth: 1,
-        query: "Test final_var",
+        rootQuery: "Test final_var", taskPrompt: "Test final_var",
       })
       bindSession(sessionId, manager)
 

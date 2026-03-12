@@ -25,10 +25,12 @@ export async function executeExecOperation(
   const execSpan = tracer?.startSpan(chatSessionId, rlmSessionId, "exec")
   try {
     const binding = assertExecTrusted(chatSessionId, config)
-    const output = await replBackend.execute(operation.code, {
+    const replContext = {
       sessionID: chatSessionId,
       rlmSessionId,
-      query: binding.query,
+      query: binding.taskPrompt,
+      rootQuery: binding.rootQuery,
+      taskPrompt: binding.taskPrompt,
       manager: binding.manager,
       toolContext: context,
       client: options.client,
@@ -36,7 +38,8 @@ export async function executeExecOperation(
       subcallAgent: options.subcallAgent,
       subcallModel: options.subcallModel,
       config,
-    })
+    }
+    const output = await replBackend.execute(operation.code, replContext)
     const offloaded = parseOffloadedOutput(output)
 
     if (operation.output_variable) {

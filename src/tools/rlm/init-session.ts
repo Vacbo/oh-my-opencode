@@ -29,7 +29,8 @@ export interface InitRlmSessionResult {
   sessionId: string
   depth: number
   maxDepth: number
-  query: string
+  rootQuery: string
+  taskPrompt: string
   shouldDistill: boolean
   parentSessionId?: string
   contextMetadata: {
@@ -49,7 +50,8 @@ export function createRlmBinding(
     manager: contextManager,
     rlmSessionId: result.sessionId,
     depth: result.depth,
-    query: result.query,
+    rootQuery: result.rootQuery,
+    taskPrompt: result.taskPrompt,
     contextVariableName: result.contextMetadata.contextVariableName,
     trusted,
   }
@@ -59,7 +61,9 @@ export async function initRlmSession(
   contextManager: RlmContextManagerForInit,
   input: {
     sessionId: string
-    query: string
+    query?: string
+    rootQuery?: string
+    taskPrompt?: string
     content?: string
     file_path?: string
     depth?: number
@@ -71,13 +75,18 @@ export async function initRlmSession(
 ): Promise<InitRlmSessionResult> {
   const validated = InitRlmSessionInputSchema.parse(input)
 
+  // Use rootQuery/taskPrompt if provided, otherwise fall back to query
+  const rootQuery = validated.rootQuery ?? validated.query ?? ""
+  const taskPrompt = validated.taskPrompt ?? validated.query ?? ""
+
   let session = await contextManager.getSession(validated.sessionId)
 
   if (!session) {
     session = await contextManager.initSession(validated.sessionId, {
       maxDepth: validated.maxDepth,
       contextDir: validated.contextDir,
-      query: validated.query,
+      rootQuery,
+      taskPrompt,
       depth: validated.depth,
       parentSessionId: validated.parentSessionId,
       shouldDistill: validated.shouldDistill,
@@ -110,7 +119,8 @@ export async function initRlmSession(
     sessionId: session.sessionId,
     depth: session.depth,
     maxDepth: session.maxDepth,
-    query: session.query,
+    rootQuery: session.rootQuery,
+    taskPrompt: session.taskPrompt,
     shouldDistill: session.shouldDistill,
     parentSessionId: session.parentSessionId,
     contextMetadata: {

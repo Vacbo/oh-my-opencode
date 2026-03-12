@@ -5,16 +5,15 @@ import { coordinator } from "../../features/rlm-context/coordinator"
 import { rlmError, toErrorJson, RlmErrorCode } from "../../features/rlm-context/error-codes"
 import { detectSchema } from "./schema-detector"
 import { RlmProbeInputSchema } from "./types"
-
-const DEFAULT_PROBE_MAX_LINES = 200
-const DEFAULT_VIEW_LINES = 50
-const DEFAULT_LIST_PREVIEW_LINES = 3
-const MAX_REF_PREVIEW_CHARS = 200
+import { applyContentBounds } from "./content-bounds"
 
 export function createRlmProbeTool(
-  config?: Pick<RlmConfig, "probe_max_lines">,
+  config?: Pick<RlmConfig, "probe_max_lines" | "probe_view_lines" | "probe_list_preview_lines" | "probe_max_ref_preview_chars">,
 ): ToolDefinition {
-  const probeMaxLines = config?.probe_max_lines ?? DEFAULT_PROBE_MAX_LINES
+  const probeMaxLines = config?.probe_max_lines ?? 200
+  const probeViewLines = config?.probe_view_lines ?? 50
+  const probeListPreviewLines = config?.probe_list_preview_lines ?? 3
+  const probeMaxRefPreviewChars = config?.probe_max_ref_preview_chars ?? 200
 
   return tool({
     description: "Bounded inspection of RLM variables (head, tail, slice, stats, schema, list_vars). Returns JSON only.",
@@ -45,7 +44,7 @@ export function createRlmProbeTool(
 
       if (input.operation === "list_vars") {
         const variables = await contextManager.listVariables(sessionId)
-        const previewLines = Math.min(DEFAULT_LIST_PREVIEW_LINES, probeMaxLines)
+        const previewLines = Math.min(probeListPreviewLines, probeMaxLines)
 
         const summaries = await Promise.all(variables.map(async (variable) => {
           if (variable.storageKind === "blob") {
@@ -98,7 +97,7 @@ export function createRlmProbeTool(
           operation: "inspect_ref",
           ref: input.ref,
           variable_name: variable.name,
-          preview: content.slice(0, MAX_REF_PREVIEW_CHARS),
+          preview: content.slice(0, probeMaxRefPreviewChars),
         })
       }
 
@@ -155,17 +154,53 @@ export function createRlmProbeTool(
         }
         const boundedEnd = Math.min(input.end, input.start + probeMaxLines - 1)
         const range = lines.slice(input.start, boundedEnd + 1)
-        return JSON.stringify({ operation: "slice", variable_name: variable.name, returned_lines: range.length, content: range.join("\n") })
+        const content = range.join("\n")
+        const bounded = applyContentBounds(content, {
+          maxBytes: input.max_bytes,
+          maxTokens: input.max_tokens,
+        })
+        return JSON.stringify({
+          operation: "slice",
+          variable_name: variable.name,
+          returned_lines: bounded.returnedLines,
+          returned_bytes: bounded.returnedBytes,
+          returned_tokens: bounded.returnedTokens,
+          content: bounded.content,
+        })
       }
 
-      const targetLines = clampRequestedLines(input.lines, probeMaxLines)
+      const targetLines = clampRequestedLines(input.lines, probeMaxLines, probeViewLines)
       if (input.operation === "head") {
         const selected = lines.slice(0, targetLines)
-        return JSON.stringify({ operation: "head", variable_name: variable.name, returned_lines: selected.length, content: selected.join("\n") })
+        const content = selected.join("\n")
+        const bounded = applyContentBounds(content, {
+          maxBytes: input.max_bytes,
+          maxTokens: input.max_tokens,
+        })
+        return JSON.stringify({
+          operation: "head",
+          variable_name: variable.name,
+          returned_lines: bounded.returnedLines,
+          returned_bytes: bounded.returnedBytes,
+          returned_tokens: bounded.returnedTokens,
+          content: bounded.content,
+        })
       }
 
       const selected = lines.slice(Math.max(0, lines.length - targetLines))
-      return JSON.stringify({ operation: "tail", variable_name: variable.name, returned_lines: selected.length, content: selected.join("\n") })
+      const content = selected.join("\n")
+      const bounded = applyContentBounds(content, {
+        maxBytes: input.max_bytes,
+        maxTokens: input.max_tokens,
+      })
+      return JSON.stringify({
+        operation: "tail",
+        variable_name: variable.name,
+        returned_lines: bounded.returnedLines,
+        returned_bytes: bounded.returnedBytes,
+        returned_tokens: bounded.returnedTokens,
+        content: bounded.content,
+      })
     },
   })
 }
@@ -181,7 +216,7 @@ function toLines(content: string): string[] {
   return lines
 }
 
-function clampRequestedLines(lines: number | undefined, probeMaxLines: number): number {
-  const requested = lines ?? DEFAULT_VIEW_LINES
+function clampRequestedLines(lines: number | undefined, probeMaxLines: number, probeViewLines: number): number {
+  const requested = lines ?? probeViewLines
   return Math.max(1, Math.min(requested, probeMaxLines))
 }

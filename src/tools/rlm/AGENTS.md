@@ -1,10 +1,10 @@
 # src/tools/rlm/ — RLM Public Tools and Internals
 
-**Generated:** 2026-03-05
+**Generated:** 2026-03-12
 
 ## OVERVIEW
 
-Four public RLM tools (`rlm_probe`, `rlm_search`, `rlm_plan`, `rlm_finish`) plus internal helpers for session initialization, system prompt building, and recursive child execution. The tools expose a REPL-first mental model where context is symbolic and interaction is bounded.
+Four public RLM tools (`rlm_probe`, `rlm_search`, `rlm_plan`, `rlm_finish`) plus internal helpers for session initialization, system prompt building, recursive child execution, parallel map execution, AST-aware code splitting, and sibling caching. The tools expose a REPL-first mental model where context is symbolic and interaction is bounded.
 
 ## FILE STRUCTURE
 
@@ -20,13 +20,22 @@ Four public RLM tools (`rlm_probe`, `rlm_search`, `rlm_plan`, `rlm_finish`) plus
 | `plan-executor.ts` | `executeRlmPlan()`: orchestrates 8-op plan execution |
 | `exec-op.ts` | `executeExecOperation()`: trusted REPL execution for `exec` plan op |
 | `repl-runtime.ts` | `createTrustedLocalRlmReplBackend()`: sandboxed exec with getVar/setVar/llm_query/print |
-| `plan-basic-ops.ts` | `split`, `select`, `concat`, `write_var` operations |
+| `plan-basic-ops.ts` | `split`, `split_code`, `select`, `concat`, `write_var` operations |
 | `plan-subcall-ops.ts` | `map_llm`, `map_rlm`, `reduce_llm` with child session handling |
-| `subcall-runner.ts` | Sync sub-call execution for child RLM/LM sessions |
+| `subcall-runner.ts` | Sync sub-call execution with exponential backoff + jitter |
 | `plan-utils.ts` | Helpers: session lookup, template expansion, error formatting |
-| `progress-emitter.ts` | `createProgressEmitter()`: throttled progress events for plan execution |
+| `plan-operation-runner.ts` | Dispatches plan ops with parallel/sequential routing |
+| `progress-emitter.ts` | `createProgressEmitter()`: throttled progress + streaming events |
 | `vm-sandbox.ts` | `createVmSandboxRlmReplBackend()`: defense-in-depth `node:vm` sandbox |
-| `benchmark/` | RLM benchmark harness and 4 core patterns |
+| `sub-rlm.ts` | `createSubRlm()`: recursive exec helper for `sub_rlm()` namespace function |
+| `exec-namespace.ts` | `installExecNamespace()`: shared helper surface for trusted and VM backends |
+| `parallel-executor.ts` | `executeParallelMapLlmOperation()`, `executeParallelMapRlmOperation()` |
+| `parallel-map-shared.ts` | Shared parallel map utilities: chunked execution, ordered persistence |
+| `split-strategies.ts` | `splitByAst()`: AST-aware code splitting for TypeScript, Python, Go |
+| `content-bounds.ts` | `applyContentBounds()`: token/byte-bounded content truncation |
+| `session-lock.ts` | `SessionLock`: per-session async FIFO lock for exec concurrency safety |
+| `sibling-cache.ts` | `lookupSiblingCacheResult()`: fingerprint-based result caching |
+| `benchmark/` | RLM benchmark harness, 4 core patterns, dataset loaders, evaluation runner |
 | `tools.ts` | Factory functions: `createRlmProbeTool()`, `createRlmSearchTool()`, etc. |
 | `index.ts` | Barrel export: all factories and helpers |
 
@@ -40,9 +49,9 @@ Four public RLM tools (`rlm_probe`, `rlm_search`, `rlm_plan`, `rlm_finish`) plus
 
 | Operation | Parameters | Returns |
 |-----------|-----------|---------|
-| `head` | `variable_name`, `lines?` | First N lines of blob |
-| `tail` | `variable_name`, `lines?` | Last N lines of blob |
-| `slice` | `variable_name`, `start`, `end` | Lines M to N of blob |
+| `head` | `variable_name`, `lines?`, `max_bytes?`, `max_tokens?` | First N lines of blob |
+| `tail` | `variable_name`, `lines?`, `max_bytes?`, `max_tokens?` | Last N lines of blob |
+| `slice` | `variable_name`, `start`, `end`, `max_bytes?`, `max_tokens?` | Lines M to N of blob |
 | `stats` | `variable_name` | Metadata (size, line count) for blob or manifest |
 | `schema` | `variable_name` | Best-effort structure detection for blob |
 | `list_vars` | (none) | All variables in session with metadata |
@@ -50,6 +59,8 @@ Four public RLM tools (`rlm_probe`, `rlm_search`, `rlm_plan`, `rlm_finish`) plus
 
 **Behavior:**
 - Content-returning operations bounded by `probe_max_lines` config (default 200)
+- Optional `max_bytes` and `max_tokens` apply after line-based slicing (most restrictive wins)
+- When token/byte bounds are applied, response includes `returned_bytes` and `returned_tokens`
 - `list_vars` returns metadata only, no content
 - Manifest `stats` returns item count and total size
 - All responses are JSON
@@ -103,6 +114,7 @@ Four public RLM tools (`rlm_probe`, `rlm_search`, `rlm_plan`, `rlm_finish`) plus
 {
   operations: Array<
     | { op: 'split', variable_name, chunk_size, output_variable }
+    | { op: 'split_code', variable_name, language, granularity?, output_variable }
     | { op: 'select', variable_name, indices?, filter?, output_variable }
     | { op: 'map_llm', variable_name, prompt, output_variable }
     | { op: 'map_rlm', variable_name, prompt, output_variable }
@@ -120,6 +132,7 @@ Four public RLM tools (`rlm_probe`, `rlm_search`, `rlm_plan`, `rlm_finish`) plus
 | Op | Input | Output | Semantics |
 |----|-------|--------|-----------|
 | `split` | blob | manifest | Chunk blob into N-line pieces, create manifest |
+| `split_code` | blob | manifest | AST-aware split by function/class/block boundaries |
 | `select` | manifest | manifest | Filter/reorder manifest items by indices or filter expression |
 | `map_llm` | manifest | manifest | Apply LM prompt to each blob item, collect results |
 | `map_rlm` | manifest | manifest | Apply RLM session to each blob item (or downgrade to `map_llm` if depth limit reached) |
@@ -130,9 +143,11 @@ Four public RLM tools (`rlm_probe`, `rlm_search`, `rlm_plan`, `rlm_finish`) plus
 | `final_var` | variable_name | — | Plan-local halt; return variable name (not terminal) |
 
 **Execution Rules:**
-- Sequential only (no parallel map in Phase 1)
-- Max 50 operations per plan
-- `{{query}}` expands from persisted `session.query`
+- `map_llm`/`map_rlm` execute in parallel when `parallel_map_concurrency > 1` (default: 3)
+- Parallel map uses `Promise.allSettled` with bounded concurrency; results ordered by original index
+- Fallback to sequential when `parallel_map_concurrency: 1`
+- Max 50 operations per plan (configurable via `plan_max_operations`)
+- `{{query}}` expands from persisted `session.taskPrompt`; `{{rootQuery}}` from `session.rootQuery`
 - `{{item}}` expands from current blob item content (in map operations)
 - Stops on first error or `final_var`
 
@@ -153,7 +168,8 @@ Or on `final_var`:
   "halted": true,
   "final_variable": "result",
   "executed_ops": 5,
-  "operation_results": [...]
+  "operation_results": [...],
+  "budget": { "subcall_count": 3, "output_bytes": 4096, "wall_time_ms": 1200 }
 }
 ```
 
@@ -236,7 +252,8 @@ Or on `final_var`:
   sessionId: string
   depth: number
   maxDepth: number
-  query: string
+  rootQuery: string           // Original user query (propagated to children)
+  taskPrompt: string          // Per-session task prompt (may differ in children)
   shouldDistill: boolean
   parentSessionId?: string
   contextMetadata: {
@@ -316,6 +333,13 @@ Or on `final_var`:
 - Throttles "before" events to `throttleMs` (default 200ms)
 - Always emits "after" events and first/last "before" events
 - Includes `opIndex`, `opCount`, `opType`, `phase`, and `durationMs` (for "after")
+
+**Streaming Results (Phase 4):**
+- `emitStreamingResult()` sends partial plan results as `rlm:plan:streaming` events
+- Independent throttle state (`streaming_throttle_ms`, default 100ms)
+- Always emits on `percent_complete === 100`
+- Large results truncated to 200-char preview + byteSize (respects offload threshold)
+- Config: `progress.streaming_enabled` (default `true`), `progress.streaming_throttle_ms` (default `100`)
 
 ### `createVmSandboxRlmReplBackend(deps?)`
 
@@ -412,13 +436,20 @@ This ensures the final answer is never truncated.
 ## TESTING
 
 Tests cover:
-- Probe operations: head, tail, slice, stats, schema, list_vars
+- Probe operations: head, tail, slice, stats, schema, list_vars, token/byte bounds
 - Search: literal and regex modes, bounded results, manifest rejection
-- Plan: all 8 operations, manifest order preservation, depth downgrade
+- Plan: all 10 operations, manifest order preservation, depth downgrade, parallel map
 - Finish: variable and literal paths, XOR validation, manifest rejection
 - Init helper: session creation, context blob creation, metadata return
 - System prompt: REPL-first framing, depth/recursion notes, tool mapping
 - Parser: `FINAL()` and `FINAL_VAR()` precedence, multiline capture
+- Sub-RLM: downgrade behavior, wall-time inheritance, subcall_limit, cleanup
+- Parallel executor: ordered output, concurrency bounds, aggregated error reporting
+- Split strategies: AST splitting for TS/Python/Go, fallback behavior
+- Session lock: same-session serialization, different-session parallelism
+- Sibling cache: key generation, TTL expiry, fingerprint completeness
+- Content bounds: max_bytes truncation, max_tokens truncation, combined bounds
+- Benchmarks: dataset loaders, evaluation runner, smoke/full modes
 - Integration: full probe → search → exec → finish flow, metadata-only feedback, trusted mode, FINAL/FINAL_VAR finalization
 
 ## ALGORITHM 1 CONTRACTS
@@ -458,14 +489,46 @@ These contracts define the model-facing REPL namespace injected into `exec` oper
 |--------|------|-------------|
 | `context` | `string` | Pre-injected from the binding's context variable on first exec |
 | `llm_query(prompt, options?)` | `async (string, {title?, max_tokens?}) => string` | Callable LM function for leaf queries via sync subcall |
+| `sub_rlm(query, contextOrVar, options?)` | `async (string, string, {title?}) => string` | Recursive RLM subcall; downgrades to LM at depth limit |
 | `print(value)` | `(unknown) => void` | Bounded output capture; offloaded if exceeding `print_limit_bytes` |
 | `getVar(name)` | `async (string) => string` | Read blob variable content by name |
 | `setVar(name, value)` | `async (string, string) => void` | Create or overwrite blob variable |
-| `getQuery()` | `() => string` | Access the original user query |
+| `getQuery()` | `() => string` | Access the per-session task prompt |
+| `getRootQuery()` | `() => string` | Access the original root user query |
 
 **Trusted mode:** Exec requires `binding.trusted === true` when `exec.trusted_only` is enabled (default). Untrusted bindings receive an error: `"exec requires trusted mode"`.
 
 **Namespace persistence:** Variables set via the `context` global and bare assignments persist across exec calls within the same session.
+
+**Concurrency safety:** Per-session `SessionLock` serializes exec calls within the same RLM session while different sessions run in parallel. Both trusted and VM backends acquire the lock around the entire `execute()` call.
+
+### `sub_rlm()` Semantics
+
+The `sub_rlm(query, contextOrVar, options?)` exec helper enables recursive RLM calls from within `exec` operations:
+
+- **Context resolution:** If `contextOrVar` matches an existing blob variable name, its content is used; otherwise the string is treated as literal context
+- **Depth check:** When `depth + 1 >= maxDepth`, downgrades to a plain LM subcall with inline context (no RLM tools)
+- **Recursive path:** Creates a child RLM session via `initRlmSession()`, binds it through the coordinator, runs the subcall, then resolves output via `rlm_finish`/`FINAL()`/`FINAL_VAR()`
+- **Budget enforcement:** Respects `subcall_limit` config; inherits remaining wall-time from root budget
+- **Cleanup:** Always unbinds child coordinator, deletes child session, and cleans up subcall tracking in `finally`
+
+### `split_code` Operation
+
+AST-aware code splitting using ast-grep for TypeScript, Python, and Go:
+
+- **Languages:** `typescript`, `python`, `go`
+- **Granularities:** `function` (functions/methods), `class` (classes/types), `block` (both)
+- **Filtering:** Top-level declarations only (`start.column === 0`), sorted by byte offset, overlapping spans deduplicated
+- **Fallback:** Falls back to naive 4000-character chunking on AST errors or zero valid matches
+
+### Sibling Cache
+
+Fingerprint-based result caching for sibling RLM runs:
+
+- **Key parts:** `session_id`, `root_query`, `model`, `provider`, `version`, `temperature`, `system_prompt_hash`
+- **Lookup:** Skipped when model/provider/temperature are missing (avoids accidental hits)
+- **Storage:** `.sisyphus/rlm-cache/siblings/{hash}.json`
+- **TTL:** Configurable via `cache.ttl_hours` (default 24h); `cache.enabled` can disable reads entirely
 
 ### Benchmark Patterns
 
@@ -478,12 +541,28 @@ The `src/tools/rlm/benchmark/` directory contains a harness and 4 core patterns 
 | **Variable Pipeline** | Verifies complex multi-tool flows: `exec` → `probe` → `exec` → `finish` |
 | **Error Recovery** | Verifies error taxonomy and graceful failure on invalid inputs/patterns |
 
+**Dataset Loaders (Phase 4):**
+
+| Dataset | Items | Purpose |
+|---------|-------|---------|
+| **browsecomp** | 15 | Web navigation queries: fact-retrieval, code-navigation, documentation |
+| **oolong** | 12 | Long-context reasoning: character-tracking, numerical-reasoning, state-tracking, etc. |
+
+- `loadDataset(name, mode)`: loads synthetic datasets with `smoke` (3 items) or `full` mode
+- `listDatasets()`: returns available dataset names
+- Datasets are in-memory constants with Zod-validated `DatasetItem` schema
+
+**Evaluation Runner (Phase 4):**
+
+- `runEvaluation(config)`: runs dataset evaluation with smoke (mocked) or full (real subcall) modes
+- Metrics: exact match accuracy, fuzzy match accuracy, token efficiency, average depth/tokens/wall time
+- Fuzzy matching: normalized-string containment + expected-token overlap (>= 0.6 threshold)
+
 Run benchmarks via:
 ```bash
 bun test src/tools/rlm/benchmark/harness.test.ts
+bun test src/tools/rlm/benchmark/evaluation.test.ts
 ```
-
-**Trusted mode:** Exec requires `binding.trusted === true` when `exec.trusted_only` is enabled (default). Untrusted bindings receive an error: `"exec requires trusted mode"`.
 
 ## TESTING GUIDELINES
 

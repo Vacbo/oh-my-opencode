@@ -23,7 +23,8 @@ export class InMemoryRlmManager implements RlmContextManagerForPlan, RlmContextM
     options: {
       maxDepth: number
       contextDir: string
-      query: string
+      rootQuery: string
+      taskPrompt: string
       depth?: number
       parentSessionId?: string
       shouldDistill?: boolean
@@ -34,7 +35,8 @@ export class InMemoryRlmManager implements RlmContextManagerForPlan, RlmContextM
       depth: options.depth ?? 0,
       maxDepth: options.maxDepth,
       contextDir: options.contextDir,
-      query: options.query,
+      rootQuery: options.rootQuery,
+      taskPrompt: options.taskPrompt,
       shouldDistill: options.shouldDistill ?? false,
       parentSessionId: options.parentSessionId,
       variables: new Map(),
@@ -124,13 +126,14 @@ export class InMemoryRlmManager implements RlmContextManagerForPlan, RlmContextM
   }
 }
 
-export function createSession(sessionId: string, query: string, depth: number, maxDepth: number): RlmSessionState {
+export function createSession(sessionId: string, rootQuery: string, taskPrompt: string, depth: number, maxDepth: number): RlmSessionState {
   return {
     sessionId,
     depth,
     maxDepth,
     contextDir: "/tmp/rlm",
-    query,
+    rootQuery,
+    taskPrompt,
     shouldDistill: false,
     variables: new Map(),
   }
@@ -158,7 +161,8 @@ export function bindTestCoordinator(sessionId: string, manager: RlmContextManage
     manager,
     rlmSessionId: testRlmSessionId(sessionId),
     depth: 0,
-    query: "test query",
+    rootQuery: "test query",
+    taskPrompt: "test query",
     contextVariableName: "context",
     trusted: true,
     ...overrides,

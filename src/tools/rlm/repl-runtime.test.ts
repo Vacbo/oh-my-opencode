@@ -21,6 +21,16 @@ import {
 const SESSION_ID = "ses-repl-runtime"
 const RLM_SESSION_ID = testRlmSessionId(SESSION_ID)
 
+type TestSession = {
+  sessionID: string
+  rlmSessionId: string
+  manager: InMemoryRlmManager
+  rootQuery: string
+  taskPrompt: string
+}
+
+const extraSessions: TestSession[] = []
+
 function createConfig(overrides: Partial<RlmConfig> = {}): RlmConfig {
   return RlmConfigSchema.parse(overrides)
 }
@@ -29,7 +39,8 @@ function createContext(manager: InMemoryRlmManager, config: RlmConfig) {
   return {
     sessionID: SESSION_ID,
     rlmSessionId: RLM_SESSION_ID,
-    query: "test query",
+    rootQuery: "root question",
+    taskPrompt: "task prompt",
     manager,
     toolContext: createToolContext(SESSION_ID),
     client: dummyClient,
@@ -38,14 +49,42 @@ function createContext(manager: InMemoryRlmManager, config: RlmConfig) {
   }
 }
 
+function createDeferred<T>(): {
+  promise: Promise<T>
+  reject: (reason?: unknown) => void
+  resolve: (value: T | PromiseLike<T>) => void
+} {
+  let resolve!: (value: T | PromiseLike<T>) => void
+  let reject!: (reason?: unknown) => void
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise
+    reject = rejectPromise
+  })
+  return { promise, resolve, reject }
+}
+
+async function waitFor(predicate: () => boolean): Promise<void> {
+  for (let index = 0; index < 20; index += 1) {
+    if (predicate()) {
+      return
+    }
+    await Bun.sleep(0)
+  }
+  throw new Error("condition not met")
+}
+
 function setupSession(options: {
   trusted?: boolean
   contextVariableName?: string
   contextContent?: string
+  rootQuery?: string
+  taskPrompt?: string
 } = {}): InMemoryRlmManager {
   const manager = new InMemoryRlmManager()
   const contextVariableName = options.contextVariableName ?? "context"
-  manager.seedSession(createSession(RLM_SESSION_ID, "test query", 0, 3))
+  const rootQuery = options.rootQuery ?? "test query"
+  const taskPrompt = options.taskPrompt ?? "test query"
+  manager.seedSession(createSession(RLM_SESSION_ID, rootQuery, taskPrompt, 0, 3))
   manager.createBlobVariable(RLM_SESSION_ID, {
     name: contextVariableName,
     content: options.contextContent ?? "seed context",
@@ -53,13 +92,62 @@ function setupSession(options: {
   bindTestCoordinator(SESSION_ID, manager, {
     trusted: options.trusted ?? true,
     contextVariableName,
+    rootQuery,
+    taskPrompt,
   })
   return manager
+}
+
+function setupNamedSession(sessionID: string, options: {
+  trusted?: boolean
+  contextVariableName?: string
+  contextContent?: string
+  rootQuery?: string
+  taskPrompt?: string
+} = {}): TestSession {
+  const manager = new InMemoryRlmManager()
+  const rlmSessionId = testRlmSessionId(sessionID)
+  const contextVariableName = options.contextVariableName ?? "context"
+  const rootQuery = options.rootQuery ?? "test query"
+  const taskPrompt = options.taskPrompt ?? rootQuery
+  manager.seedSession(createSession(rlmSessionId, rootQuery, taskPrompt, 0, 3))
+  manager.createBlobVariable(rlmSessionId, {
+    name: contextVariableName,
+    content: options.contextContent ?? "seed context",
+  })
+  bindTestCoordinator(sessionID, manager, {
+    trusted: options.trusted ?? true,
+    contextVariableName,
+    rootQuery,
+    taskPrompt,
+  })
+  const session = { sessionID, rlmSessionId, manager, rootQuery, taskPrompt }
+  extraSessions.push(session)
+  return session
+}
+
+function createNamedContext(session: TestSession, config: RlmConfig) {
+  return {
+    sessionID: session.sessionID,
+    rlmSessionId: session.rlmSessionId,
+    rootQuery: session.rootQuery,
+    taskPrompt: session.taskPrompt,
+    manager: session.manager,
+    toolContext: createToolContext(session.sessionID),
+    client: dummyClient,
+    directory: "/tmp",
+    config,
+  }
 }
 
 afterEach(() => {
   clearRlmReplNamespace(RLM_SESSION_ID)
   unbindTestCoordinator(SESSION_ID)
+  while (extraSessions.length > 0) {
+    const session = extraSessions.pop()!
+    clearRlmReplNamespace(session.rlmSessionId)
+    unbindTestCoordinator(session.sessionID)
+  }
 })
 
 describe("trusted local RLM repl backend", () => {
@@ -152,7 +240,7 @@ describe("trusted local RLM repl backend", () => {
     const manager = setupSession({ trusted: false })
     const backend = createTrustedLocalRlmReplBackend()
 
-    await expect(
+    return expect(
       backend.execute('print("blocked")', createContext(manager, createConfig())),
     ).rejects.toThrow("exec requires trusted mode")
   })
@@ -181,5 +269,98 @@ describe("trusted local RLM repl backend", () => {
     )
 
     expect(output).toBe("seed value\n")
+  })
+
+  it("returns taskPrompt from getQuery and rootQuery from getRootQuery", async () => {
+    const manager = setupSession()
+    const backend = createTrustedLocalRlmReplBackend()
+
+    const output = await backend.execute(
+      'print(`${getRootQuery()}|${getQuery()}`)',
+      createContext(manager, createConfig()),
+    )
+
+    expect(output).toBe("root question|task prompt\n")
+  })
+
+  it("keeps parallel exec for different sessions isolated", async () => {
+    const first = setupNamedSession("ses-repl-parallel-a")
+    const second = setupNamedSession("ses-repl-parallel-b")
+    const firstGate = createDeferred<void>()
+    const secondGate = createDeferred<void>()
+    const prompts: string[] = []
+    const backend = createTrustedLocalRlmReplBackend({
+      cleanupSyncSubcallSession: mock(() => {}),
+      runSyncSubcall: mock(async ({ prompt }) => {
+        prompts.push(prompt)
+        if (prompt === "hold-a") {
+          await firstGate.promise
+        } else if (prompt === "hold-b") {
+          await secondGate.promise
+        } else {
+          throw new Error(`unexpected prompt: ${prompt}`)
+        }
+        return { ok: true as const, sessionID: `leaf-${prompt}`, textOutput: "done", messages: [] }
+      }),
+    })
+    const firstContext = createNamedContext(first, createConfig())
+    const secondContext = createNamedContext(second, createConfig())
+
+    const firstExec = backend.execute('value = "alpha"; await llm_query("hold-a")', firstContext)
+    const secondExec = backend.execute('value = "beta"; await llm_query("hold-b")', secondContext)
+
+    await waitFor(() => prompts.length === 2)
+
+    firstGate.resolve()
+    secondGate.resolve()
+    await Promise.all([firstExec, secondExec])
+
+    expect(await backend.execute("print(value)", firstContext)).toBe("alpha\n")
+    expect(await backend.execute("print(value)", secondContext)).toBe("beta\n")
+  })
+
+  it("serializes parallel exec for the same session and preserves mutation order", async () => {
+    const session = setupNamedSession("ses-repl-serialized")
+    const gate = createDeferred<void>()
+    const runSyncSubcall = mock(async ({ prompt }) => {
+      expect(prompt).toBe("hold")
+      await gate.promise
+      return { ok: true as const, sessionID: "leaf-hold", textOutput: "done", messages: [] }
+    })
+    const backend = createTrustedLocalRlmReplBackend({
+      cleanupSyncSubcallSession: mock(() => {}),
+      runSyncSubcall,
+    })
+    const context = createNamedContext(session, createConfig())
+
+    const firstExec = backend.execute(
+      'history = ["first"]; await llm_query("hold"); history.push("after-first")',
+      context,
+    )
+    await waitFor(() => runSyncSubcall.mock.calls.length === 1)
+
+    let secondSettled = false
+    const secondExec = backend.execute(
+      'history.push("second"); print(history.join(","))',
+      context,
+    ).then(
+      (value) => {
+        secondSettled = true
+        return value
+      },
+      (error) => {
+        secondSettled = true
+        throw error
+      },
+    )
+
+    await Bun.sleep(0)
+    expect(secondSettled).toBe(false)
+
+    gate.resolve()
+
+    expect(await firstExec).toBe("")
+    expect(await secondExec).toBe("first,after-first,second\n")
+    expect(await backend.execute('print(history.join(","))', context)).toBe("first,after-first,second\n")
   })
 })

@@ -1,3 +1,5 @@
 export * from "./types"
 export * from "./harness"
 export * from "./patterns"
+export * from "./dataset-loader"
+export * from "./synthetic-datasets"

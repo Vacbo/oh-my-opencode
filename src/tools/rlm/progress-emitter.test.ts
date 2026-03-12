@@ -1,5 +1,9 @@
-import { describe, expect, it, mock, beforeEach } from "bun:test"
-import { createProgressEmitter, type RlmProgressEvent } from "./progress-emitter"
+import { describe, expect, it, beforeEach } from "bun:test"
+import {
+  createProgressEmitter,
+  type RlmProgressEvent,
+  type RlmStreamingResultEvent,
+} from "./progress-emitter"
 
 describe("progress-emitter", () => {
   let logged: Array<{ message: string; data: unknown }>
@@ -130,6 +134,143 @@ describe("progress-emitter", () => {
       const event = logged[0].data as RlmProgressEvent
       expect(event.chatSessionId).toBe("chat-session-abc")
       expect(event.rlmSessionId).toBe("rlm-session-xyz")
+    })
+  })
+
+  describe("#given streaming result emission", () => {
+    describe("#when emitStreamingResult is called with small result", () => {
+      it("#then emits streaming event with inline partial_result", () => {
+        const emitter = createProgressEmitter(
+          { streamingEnabled: true, offloadThresholdBytes: 2048 },
+          logger,
+        )
+
+        emitter.emitStreamingResult("chat-1", "rlm-1", 2, "map_llm", "partial output", 50)
+
+        const streamEvents = logged.filter(
+          (l) => (l.data as RlmStreamingResultEvent).type === "rlm:plan:streaming",
+        )
+        expect(streamEvents).toHaveLength(1)
+
+        const event = streamEvents[0].data as RlmStreamingResultEvent
+        expect(event.operation_index).toBe(2)
+        expect(event.operation_type).toBe("map_llm")
+        expect(event.partial_result).toBe("partial output")
+        expect(event.percent_complete).toBe(50)
+        expect(event.timestamp).toBeGreaterThan(0)
+      })
+    })
+
+    describe("#when emitStreamingResult is called with large result exceeding threshold", () => {
+      it("#then truncates partial_result and marks as offloaded", () => {
+        const emitter = createProgressEmitter(
+          { streamingEnabled: true, offloadThresholdBytes: 50 },
+          logger,
+        )
+
+        const largeContent = "x".repeat(200)
+        emitter.emitStreamingResult("chat-1", "rlm-1", 0, "reduce_llm", largeContent, 75)
+
+        const streamEvents = logged.filter(
+          (l) => (l.data as RlmStreamingResultEvent).type === "rlm:plan:streaming",
+        )
+        expect(streamEvents).toHaveLength(1)
+
+        const event = streamEvents[0].data as RlmStreamingResultEvent
+        expect(event.partial_result).toEqual({
+          preview: largeContent.slice(0, 200),
+          byteSize: Buffer.byteLength(largeContent, "utf8"),
+          truncated: true,
+        })
+      })
+    })
+
+    describe("#when streaming is disabled via config", () => {
+      it("#then does not emit streaming events", () => {
+        const emitter = createProgressEmitter(
+          { streamingEnabled: false },
+          logger,
+        )
+
+        emitter.emitStreamingResult("chat-1", "rlm-1", 0, "map_llm", "result", 100)
+
+        const streamEvents = logged.filter(
+          (l) => (l.data as RlmStreamingResultEvent).type === "rlm:plan:streaming",
+        )
+        expect(streamEvents).toHaveLength(0)
+      })
+    })
+
+    describe("#when streaming events are throttled", () => {
+      it("#then respects streaming_throttle_ms independently from before/after throttle", () => {
+        const emitter = createProgressEmitter(
+          { streamingEnabled: true, streamingThrottleMs: 10_000 },
+          logger,
+        )
+
+        emitter.emitStreamingResult("chat-1", "rlm-1", 0, "map_llm", "r1", 25)
+        emitter.emitStreamingResult("chat-1", "rlm-1", 0, "map_llm", "r2", 50)
+        emitter.emitStreamingResult("chat-1", "rlm-1", 0, "map_llm", "r3", 75)
+        emitter.emitStreamingResult("chat-1", "rlm-1", 0, "map_llm", "r4", 100)
+
+        const streamEvents = logged.filter(
+          (l) => (l.data as RlmStreamingResultEvent).type === "rlm:plan:streaming",
+        )
+        expect(streamEvents).toHaveLength(2)
+        expect((streamEvents[0].data as RlmStreamingResultEvent).percent_complete).toBe(25)
+        expect((streamEvents[1].data as RlmStreamingResultEvent).percent_complete).toBe(100)
+      })
+    })
+
+    describe("#when percent_complete is 100", () => {
+      it("#then always emits regardless of throttle", () => {
+        const emitter = createProgressEmitter(
+          { streamingEnabled: true, streamingThrottleMs: 10_000 },
+          logger,
+        )
+
+        emitter.emitStreamingResult("chat-1", "rlm-1", 0, "map_llm", "first", 25)
+        emitter.emitStreamingResult("chat-1", "rlm-1", 0, "map_llm", "done", 100)
+
+        const streamEvents = logged.filter(
+          (l) => (l.data as RlmStreamingResultEvent).type === "rlm:plan:streaming",
+        )
+        expect(streamEvents).toHaveLength(2)
+      })
+    })
+
+    describe("#when streaming throttle is zero", () => {
+      it("#then emits all streaming events", () => {
+        const emitter = createProgressEmitter(
+          { streamingEnabled: true, streamingThrottleMs: 0 },
+          logger,
+        )
+
+        emitter.emitStreamingResult("chat-1", "rlm-1", 0, "map_llm", "r1", 33)
+        emitter.emitStreamingResult("chat-1", "rlm-1", 0, "map_llm", "r2", 66)
+        emitter.emitStreamingResult("chat-1", "rlm-1", 0, "map_llm", "r3", 100)
+
+        const streamEvents = logged.filter(
+          (l) => (l.data as RlmStreamingResultEvent).type === "rlm:plan:streaming",
+        )
+        expect(streamEvents).toHaveLength(3)
+      })
+    })
+
+    describe("#when streaming log message is formatted", () => {
+      it("#then includes operation index and percent", () => {
+        const emitter = createProgressEmitter(
+          { streamingEnabled: true },
+          logger,
+        )
+
+        emitter.emitStreamingResult("chat-1", "rlm-1", 3, "map_llm", "partial", 42)
+
+        const streamLog = logged.find(
+          (l) => (l.data as RlmStreamingResultEvent).type === "rlm:plan:streaming",
+        )
+        expect(streamLog?.message).toBe("[rlm:streaming] op 3 (map_llm) 42%")
+      })
     })
   })
 })

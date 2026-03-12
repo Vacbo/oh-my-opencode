@@ -1,6 +1,6 @@
 import { describe, expect, it, afterEach } from "bun:test"
 import { createRlmPlanTool } from "./plan-tool"
-import type { RlmConfig } from "../../config/schema/experimental"
+import { RlmConfigSchema, type RlmConfig } from "../../config/schema/experimental"
 import {
   InMemoryRlmManager,
   createSession,
@@ -11,20 +11,17 @@ import {
   unbindTestCoordinator,
 } from "./plan-tool.test-helpers"
 
-const defaultConfig: RlmConfig = {
+const defaultConfig: RlmConfig = RlmConfigSchema.parse({
   enabled: true,
   max_depth: 3,
-  context_storage_dir: ".sisyphus/rlm-contexts",
-  distill_threshold_tokens: 2000,
-  probe_max_lines: 200,
-}
+})
 
 describe("createRlmPlanTool operations", () => {
   it("rejects plans above 50 operations", async () => {
     const sessionId = "ses-max-ops"
     const rlmSessionId = testRlmSessionId(sessionId)
     const manager = new InMemoryRlmManager()
-    manager.seedSession(createSession(rlmSessionId, "query", 0, 2))
+    manager.seedSession(createSession(rlmSessionId, "query", "query", 0, 2))
     bindTestCoordinator(sessionId, manager)
     const tool = createRlmPlanTool({ client: dummyClient, directory: "/tmp", config: defaultConfig })
 
@@ -47,7 +44,7 @@ describe("createRlmPlanTool operations", () => {
     const sessionId = "ses-write"
     const rlmSessionId = testRlmSessionId(sessionId)
     const manager = new InMemoryRlmManager()
-    manager.seedSession(createSession(rlmSessionId, "query", 0, 2))
+    manager.seedSession(createSession(rlmSessionId, "query", "query", 0, 2))
     bindTestCoordinator(sessionId, manager)
 
     const tool = createRlmPlanTool({ client: dummyClient, directory: "/tmp", config: defaultConfig })
@@ -70,11 +67,11 @@ describe("createRlmPlanTool operations", () => {
     const sessionId = "ses-map-llm"
     const rlmSessionId = testRlmSessionId(sessionId)
     const manager = new InMemoryRlmManager()
-    manager.seedSession(createSession(rlmSessionId, "Persisted query", 0, 3))
+    manager.seedSession(createSession(rlmSessionId, "Persisted query", "Persisted query", 0, 3))
     manager.createBlobVariable(rlmSessionId, { name: "item_a", content: "alpha" })
     manager.createBlobVariable(rlmSessionId, { name: "item_b", content: "beta" })
     manager.createManifestVariable(rlmSessionId, { name: "chunks", variableNames: ["item_a", "item_b"] })
-    bindTestCoordinator(sessionId, manager, { query: "Persisted query" })
+    bindTestCoordinator(sessionId, manager, { rootQuery: "Persisted query", taskPrompt: "Persisted query" })
 
     const prompts: string[] = []
     const tool = createRlmPlanTool({
@@ -106,7 +103,7 @@ describe("createRlmPlanTool operations", () => {
     const sessionId = "ses-concat"
     const rlmSessionId = testRlmSessionId(sessionId)
     const manager = new InMemoryRlmManager()
-    manager.seedSession(createSession(rlmSessionId, "query", 0, 2))
+    manager.seedSession(createSession(rlmSessionId, "query", "query", 0, 2))
     manager.createBlobVariable(rlmSessionId, { name: "first", content: "left" })
     manager.createBlobVariable(rlmSessionId, { name: "second", content: "right" })
     manager.createManifestVariable(rlmSessionId, { name: "parts", variableNames: ["first", "second"] })
@@ -133,11 +130,11 @@ describe("createRlmPlanTool operations", () => {
     const sessionId = "ses-reduce"
     const rlmSessionId = testRlmSessionId(sessionId)
     const manager = new InMemoryRlmManager()
-    manager.seedSession(createSession(rlmSessionId, "Root query", 0, 3))
+    manager.seedSession(createSession(rlmSessionId, "Root query", "Root query", 0, 3))
     manager.createBlobVariable(rlmSessionId, { name: "a", content: "one" })
     manager.createBlobVariable(rlmSessionId, { name: "b", content: "two" })
     manager.createManifestVariable(rlmSessionId, { name: "items", variableNames: ["a", "b"] })
-    bindTestCoordinator(sessionId, manager, { query: "Root query" })
+    bindTestCoordinator(sessionId, manager, { rootQuery: "Root query", taskPrompt: "Root query" })
 
     const prompts: string[] = []
     const tool = createRlmPlanTool({

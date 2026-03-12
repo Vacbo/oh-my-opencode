@@ -11,6 +11,8 @@ type ExpectChain = {
   toBeUndefined: () => void
   toBeGreaterThan: (expected: number) => void
   toBeLessThanOrEqual: (expected: number) => void
+  toBeGreaterThanOrEqual: (expected: number) => void
+  toContain: (expected: string) => void
 }
 
 type BunTestModule = {
@@ -64,6 +66,8 @@ function createValidMetadata(overrides: Partial<PersistedSession> = {}): Persist
     rootChatSessionId: "root-chat-1",
     rlmSessionId: "rlm-ses-1",
     query: "test query",
+    rootQuery: "test query",
+    taskPrompt: "test query",
     depth: 0,
     maxDepth: 2,
     contextVariableName: "context",
@@ -98,7 +102,8 @@ describe("rlm persistence", () => {
           manager,
           rlmSessionId: "rlm-ses-1",
           depth: 0,
-          query: "test query",
+          rootQuery: "test query",
+          taskPrompt: "test query",
           contextVariableName: "context",
           trusted: true,
         }, manager)
@@ -114,12 +119,61 @@ describe("rlm persistence", () => {
         const binding = freshCoordinator.resolve("root-chat-1")
         expect(binding).toBeDefined()
         expect(binding?.rlmSessionId).toBe("rlm-ses-1")
-        expect(binding?.query).toBe("test query")
+        expect(binding?.rootQuery).toBe("test query")
+        expect(binding?.taskPrompt).toBe("test query")
         expect(binding?.trusted).toBe(true)
 
         const restoredSession = await freshManager.getSession("rlm-ses-1")
         expect(restoredSession).toBeDefined()
+        expect(restoredSession?.rootQuery).toBe("test query")
+        expect(restoredSession?.taskPrompt).toBe("test query")
         expect(restoredSession?.variables.has("ctx")).toBe(true)
+      })
+
+      it("migrates legacy persisted sessions with only query into both fields", async () => {
+        const { createRlmPersistence, RlmSessionCoordinator, RlmContextManager } = await loadModules()
+        const storageDir = createTempDir()
+        const persistence = createRlmPersistence({
+          enabled: true,
+          context_storage_dir: storageDir,
+        })
+
+        const sessionDir = join(storageDir, "legacy-ses")
+        mkdirSync(sessionDir, { recursive: true })
+        writeFileSync(join(sessionDir, "ctx.blob"), "hello world", "utf8")
+        const metadata = {
+          rootChatSessionId: "root-chat-legacy",
+          rlmSessionId: "legacy-ses",
+          query: "legacy query",
+          depth: 0,
+          maxDepth: 2,
+          contextVariableName: "context",
+          trusted: true,
+          variableManifest: [{
+            name: "ctx",
+            storageKind: "blob",
+            semanticType: "context",
+            filePath: "ctx.blob",
+            byteSize: 11,
+            lineCount: 1,
+            source: "content",
+          }],
+          timestamp: Date.now(),
+        }
+        writeFileSync(join(sessionDir, "metadata.json"), JSON.stringify(metadata), "utf8")
+
+        const coordinator = new RlmSessionCoordinator()
+        const manager = new RlmContextManager()
+        const recovered = await persistence.recover(coordinator, manager)
+
+        expect(recovered).toBe(1)
+        const binding = coordinator.resolve("root-chat-legacy")
+        expect(binding?.rootQuery).toBe("legacy query")
+        expect(binding?.taskPrompt).toBe("legacy query")
+
+        const session = await manager.getSession("legacy-ses")
+        expect(session?.rootQuery).toBe("legacy query")
+        expect(session?.taskPrompt).toBe("legacy query")
       })
     })
 
@@ -257,6 +311,199 @@ describe("rlm persistence", () => {
     })
   })
 
+  describe("#given retry mechanism on persist", () => {
+    describe("#when writeFile fails with transient error (ENOENT)", () => {
+      it("#then retries up to 3 times with exponential backoff", async () => {
+        const storageDir = createTempDir()
+        
+        const { withRetry } = await import("./persistence")
+        
+        let retryAttemptCount = 0
+        const failingFn = async () => {
+          retryAttemptCount++
+          if (retryAttemptCount <= 2) {
+            const err = new Error("ENOENT: no such file or directory") as NodeJS.ErrnoException
+            err.code = "ENOENT"
+            throw err
+          }
+          return "success"
+        }
+
+        const start = Date.now()
+        const result = await withRetry(failingFn, { maxRetries: 3, delays: [1000, 2000, 4000] })
+        const elapsed = Date.now() - start
+
+        expect(retryAttemptCount).toBe(3)
+        expect(elapsed).toBeGreaterThanOrEqual(1000)
+        expect(result).toBe("success")
+      })
+    })
+
+    describe("#when writeFile fails with transient error (EACCES)", () => {
+      it("#then retries up to 3 times", async () => {
+        const { withRetry } = await import("./persistence")
+        
+        let attemptCount = 0
+        const failingFn = async () => {
+          attemptCount++
+          if (attemptCount <= 2) {
+            const err = new Error("EACCES: permission denied") as NodeJS.ErrnoException
+            err.code = "EACCES"
+            throw err
+          }
+          return "success"
+        }
+
+        const result = await withRetry(failingFn, { maxRetries: 3, delays: [1000, 2000, 4000] })
+        
+        expect(attemptCount).toBe(3)
+        expect(result).toBe("success")
+      })
+    })
+
+    describe("#when writeFile fails with EBUSY", () => {
+      it("#then retries up to 3 times", async () => {
+        const { withRetry } = await import("./persistence")
+        
+        let attemptCount = 0
+        const failingFn = async () => {
+          attemptCount++
+          if (attemptCount <= 2) {
+            const err = new Error("EBUSY: resource busy or locked") as NodeJS.ErrnoException
+            err.code = "EBUSY"
+            throw err
+          }
+          return "success"
+        }
+
+        const result = await withRetry(failingFn, { maxRetries: 3, delays: [1000, 2000, 4000] })
+        
+        expect(attemptCount).toBe(3)
+        expect(result).toBe("success")
+      })
+    })
+
+    describe("#when writeFile fails with EAGAIN", () => {
+      it("#then retries up to 3 times", async () => {
+        const { withRetry } = await import("./persistence")
+        
+        let attemptCount = 0
+        const failingFn = async () => {
+          attemptCount++
+          if (attemptCount <= 2) {
+            const err = new Error("EAGAIN: resource temporarily unavailable") as NodeJS.ErrnoException
+            err.code = "EAGAIN"
+            throw err
+          }
+          return "success"
+        }
+
+        const result = await withRetry(failingFn, { maxRetries: 3, delays: [1000, 2000, 4000] })
+        
+        expect(attemptCount).toBe(3)
+        expect(result).toBe("success")
+      })
+    })
+
+    describe("#when all 3 attempts fail with transient error", () => {
+      it("#then throws error with attempt count in message", async () => {
+        const { withRetry } = await import("./persistence")
+        
+        const failingFn = async () => {
+          const err = new Error("ENOENT: no such file or directory") as NodeJS.ErrnoException
+          err.code = "ENOENT"
+          throw err
+        }
+
+        let threw = false
+        let errorMessage = ""
+        try {
+          await withRetry(failingFn, { maxRetries: 2, delays: [100, 200] })
+        } catch (e: unknown) {
+          threw = true
+          errorMessage = e instanceof Error ? e.message : String(e)
+        }
+
+        expect(threw).toBe(true)
+        expect(errorMessage).toContain("3")
+        expect(errorMessage).toContain("attempt")
+      })
+    })
+
+    describe("#when error is permanent (validation error)", () => {
+      it("#then does NOT retry, fails immediately", async () => {
+        const { withRetry } = await import("./persistence")
+        
+        let attemptCount = 0
+        const failingFn = async () => {
+          attemptCount++
+          const err = new Error("Invalid JSON") as NodeJS.ErrnoException
+          err.code = "UNKNOWN"
+          throw err
+        }
+
+        let threw = false
+        try {
+          await withRetry(failingFn, { maxRetries: 3, delays: [1000, 2000, 4000] })
+        } catch (e: unknown) {
+          threw = true
+        }
+
+        expect(threw).toBe(true)
+        expect(attemptCount).toBe(1)
+      })
+    })
+  })
+
+  describe("#given retry mechanism on recover", () => {
+    describe("#when readdir fails with transient error", () => {
+      it("#then retries up to 3 times", async () => {
+        const { withRetry } = await import("./persistence")
+        
+        let attemptCount = 0
+        const failingFn = async () => {
+          attemptCount++
+          if (attemptCount <= 2) {
+            const err = new Error("ENOENT: no such file or directory") as NodeJS.ErrnoException
+            err.code = "ENOENT"
+            throw err
+          }
+          return "success"
+        }
+
+        const result = await withRetry(failingFn, { maxRetries: 3, delays: [1000, 2000, 4000] })
+        
+        expect(attemptCount).toBe(3)
+        expect(result).toBe("success")
+      })
+    })
+
+    describe("#when all 3 attempts fail on recover", () => {
+      it("#then throws error with attempt count in message", async () => {
+        const { withRetry } = await import("./persistence")
+        
+        const failingFn = async () => {
+          const err = new Error("EACCES: permission denied") as NodeJS.ErrnoException
+          err.code = "EACCES"
+          throw err
+        }
+
+        let threw = false
+        let errorMessage = ""
+        try {
+          await withRetry(failingFn, { maxRetries: 2, delays: [100, 200] })
+        } catch (e: unknown) {
+          threw = true
+          errorMessage = e instanceof Error ? e.message : String(e)
+        }
+
+        expect(threw).toBe(true)
+        expect(errorMessage).toContain("3")
+        expect(errorMessage).toContain("attempt")
+      })
+    })
+  })
+
   describe("#given persistence is disabled", () => {
     it("#then persist is a no-op", async () => {
       const { createRlmPersistence, RlmContextManager } = await loadModules()
@@ -276,7 +523,8 @@ describe("rlm persistence", () => {
         manager,
         rlmSessionId: "ses-1",
         depth: 0,
-        query: "q",
+        rootQuery: "q",
+        taskPrompt: "q",
         contextVariableName: "ctx",
         trusted: false,
       }, manager)

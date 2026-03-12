@@ -1,4 +1,4 @@
-import type { RlmConfig } from "../../../config/schema/experimental"
+import { RlmConfigSchema, type RlmConfig } from "../../../config/schema/experimental"
 import type {
   RlmBlobVariable,
   RlmContextVariable,
@@ -23,13 +23,10 @@ import { createRlmSearchTool } from "../search-tool"
 import type { RlmReplContext } from "../repl-runtime"
 import type { BenchmarkDefinition } from "./types"
 
-const BASE_CONFIG: RlmConfig = {
+const BASE_CONFIG: RlmConfig = RlmConfigSchema.parse({
   enabled: true,
   max_depth: 3,
-  context_storage_dir: ".sisyphus/rlm-contexts",
-  distill_threshold_tokens: 2000,
-  probe_max_lines: 200,
-}
+})
 
 type Awaitable<T> = T | Promise<T>
 type BlobManager = {
@@ -41,8 +38,8 @@ function setupBenchmark(name: string, query: string, maxDepth = 3, trusted = tru
   const chatSessionId = `benchmark-${name}`
   const rlmSessionId = testRlmSessionId(chatSessionId)
   const manager = new InMemoryRlmManager()
-  manager.seedSession(createSession(rlmSessionId, query, 0, maxDepth))
-  bindTestCoordinator(chatSessionId, manager, { query, trusted })
+  manager.seedSession(createSession(rlmSessionId, query, query, 0, maxDepth))
+  bindTestCoordinator(chatSessionId, manager, { rootQuery: query, taskPrompt: query, trusted })
   return { manager, rlmSessionId, context: createToolContext(chatSessionId), release: () => unbindTestCoordinator(chatSessionId) }
 }
 
@@ -90,7 +87,9 @@ export const recursiveDecompositionPattern: BenchmarkDefinition = {
         parseFinalAnswer,
         cleanupSyncSubcallSession: () => {},
         initRlmSession: async (_manager, input): Promise<InitRlmSessionResult> => {
-          env.manager.seedSession(createSession(input.sessionId, input.query, input.depth ?? 0, input.maxDepth))
+          const rootQuery = input.rootQuery ?? input.query ?? ""
+          const taskPrompt = input.taskPrompt ?? input.query ?? ""
+          env.manager.seedSession(createSession(input.sessionId, rootQuery, taskPrompt, input.depth ?? 0, input.maxDepth))
           if (input.content) {
             await env.manager.createBlobVariable(input.sessionId, { name: "context", content: input.content })
           }
@@ -98,7 +97,8 @@ export const recursiveDecompositionPattern: BenchmarkDefinition = {
             sessionId: input.sessionId,
             depth: input.depth ?? 0,
             maxDepth: input.maxDepth,
-            query: input.query,
+            rootQuery,
+            taskPrompt,
             shouldDistill: input.shouldDistill ?? false,
             parentSessionId: input.parentSessionId,
             contextMetadata: {

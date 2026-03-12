@@ -13,12 +13,17 @@ export interface RlmSpan {
   chatSessionId: string
   rlmSessionId: string
   operation: string
+  operation_name?: string
+  operation_args?: Record<string, unknown>
+  variables_created?: string[]
   startTime: number
   endTime?: number
   status: "ok" | "error"
   metadata?: Record<string, unknown>
   error?: string
 }
+
+type RlmSpanUpdate = Partial<Pick<RlmSpan, "operation_name" | "operation_args" | "variables_created" | "metadata">>
 
 export interface SpanTreeNode {
   span: RlmSpan
@@ -31,8 +36,9 @@ export interface RlmTracer {
     rlmSessionId: string,
     operation: string,
     parentSpanId?: string,
+    update?: RlmSpanUpdate,
   ): RlmSpan
-  endSpan(spanId: string, status: "ok" | "error", error?: string): void
+  endSpan(spanId: string, status: "ok" | "error", error?: string, update?: RlmSpanUpdate): void
   getSpans(rlmSessionId: string): RlmSpan[]
   getTrace(rootSpanId: string): SpanTreeNode | undefined
 }
@@ -51,6 +57,7 @@ class RlmTracerImpl implements RlmTracer {
     rlmSessionId: string,
     operation: string,
     parentSpanId?: string,
+    update?: RlmSpanUpdate,
   ): RlmSpan {
     const span: RlmSpan = {
       spanId: generateSpanId(),
@@ -60,6 +67,7 @@ class RlmTracerImpl implements RlmTracer {
       operation,
       startTime: Date.now(),
       status: "ok",
+      ...update,
     }
 
     this.spans.set(span.spanId, span)
@@ -72,13 +80,19 @@ class RlmTracerImpl implements RlmTracer {
     return span
   }
 
-  endSpan(spanId: string, status: "ok" | "error", error?: string): void {
+  endSpan(spanId: string, status: "ok" | "error", error?: string, update?: RlmSpanUpdate): void {
     const span = this.spans.get(spanId)
     if (!span) return
 
     span.endTime = Date.now()
     span.status = status
     if (error) span.error = error
+    if (update) {
+      if (update.operation_name !== undefined) span.operation_name = update.operation_name
+      if (update.operation_args !== undefined) span.operation_args = update.operation_args
+      if (update.variables_created !== undefined) span.variables_created = update.variables_created
+      if (update.metadata !== undefined) span.metadata = update.metadata
+    }
 
     this.outputSpan(span)
   }
@@ -91,15 +105,19 @@ class RlmTracerImpl implements RlmTracer {
     const rootSpan = this.spans.get(rootSpanId)
     if (!rootSpan) return undefined
 
-    return this.buildTree(rootSpan)
+    return this.buildTree(rootSpan, new Set())
   }
 
-  private buildTree(span: RlmSpan): SpanTreeNode {
+  private buildTree(span: RlmSpan, pathSet: Set<string>): SpanTreeNode {
+    if (pathSet.has(span.spanId)) {
+      return { span, children: [] }
+    }
+    pathSet.add(span.spanId)
+    
     const children: SpanTreeNode[] = []
-
     for (const [, s] of this.spans) {
       if (s.parentSpanId === span.spanId) {
-        children.push(this.buildTree(s))
+        children.push(this.buildTree(s, new Set(pathSet)))
       }
     }
 
@@ -135,6 +153,7 @@ class NoOpTracer implements RlmTracer {
     _rlmSessionId: string,
     _operation: string,
     _parentSpanId?: string,
+    _update?: RlmSpanUpdate,
   ): RlmSpan {
     return {
       spanId: "",
@@ -146,7 +165,7 @@ class NoOpTracer implements RlmTracer {
     }
   }
 
-  endSpan(): void {}
+  endSpan(_spanId: string, _status: "ok" | "error", _error?: string, _update?: RlmSpanUpdate): void {}
 
   getSpans(): RlmSpan[] {
     return []
@@ -157,8 +176,11 @@ class NoOpTracer implements RlmTracer {
   }
 }
 
+let spanIdCounter = 0
+
 function generateSpanId(): string {
-  return `span-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`
+  spanIdCounter += 1
+  return `span-${Date.now()}-${spanIdCounter}-${Math.random().toString(36).substring(2, 11)}`
 }
 
 export function createTracer(config: RlmTracingConfig): RlmTracer {

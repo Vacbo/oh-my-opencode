@@ -2,8 +2,15 @@ import type { RlmBlobVariable, RlmSessionState } from "../../features/rlm-contex
 import type { RlmContextManagerForPlan } from "./plan-tool"
 import type { SyncSubcallResult } from "./subcall-runner"
 
-export function fillTemplate(template: string, query: string, item: string): string {
-  return template.replaceAll("{{query}}", query).replaceAll("{{item}}", item)
+export function fillTemplate(
+  template: string,
+  queries: { rootQuery: string; taskPrompt: string },
+  item: string,
+): string {
+  return template
+    .replaceAll("{{query}}", queries.taskPrompt)
+    .replaceAll("{{root_query}}", queries.rootQuery)
+    .replaceAll("{{item}}", item)
 }
 
 export async function requireSession(

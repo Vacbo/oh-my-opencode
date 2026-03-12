@@ -5,20 +5,19 @@ import type { RlmConfig } from "../../config/schema/experimental"
 import { applyFeedback } from "../../features/rlm-context/turn-feedback"
 import { assertExecTrusted, resolveRlmExecConfig } from "./repl-exec-config"
 import {
-  formatPrintedValue,
   readBlobContent,
-  toStoredContent,
   truncatePrintedOutput,
-  upsertBlobVariable,
 } from "./repl-variable-bridge"
-import type { RlmReplBackend, RlmReplContext } from "./repl-runtime"
+import type { RlmContextManagerLike } from "../../features/rlm-context/coordinator"
+import type { RlmReplBackend } from "./repl-runtime"
 import {
   cleanupSyncSubcallSession,
   runSyncSubcall,
 } from "./subcall-runner"
+import { SessionLock } from "./session-lock"
+import { installExecNamespace } from "./exec-namespace"
 
 type RlmSubcallModel = { providerID: string; modelID: string; variant?: string }
-type RlmLlmQueryOptions = { title?: string }
 type AsyncFunctionConstructor = new (...args: string[]) => (scope: Record<string, unknown>) => Promise<unknown>
 type SandboxState = { mode: "vm"; context: vm.Context; namespace: Record<string, unknown> } | { mode: "fallback"; namespace: Record<string, unknown> }
 type VmSandboxBackendDeps = {
@@ -32,12 +31,21 @@ const AsyncFunction = Object.getPrototypeOf(async function noop() {}).constructo
 const blockedNames = ["Buffer", "__dirname", "__filename", "process", "require"] as const
 const safeFallbackGlobals = new Set(["AggregateError", "Array", "BigInt", "Boolean", "Date", "decodeURI", "decodeURIComponent", "encodeURI", "encodeURIComponent", "Error", "EvalError", "Infinity", "Intl", "isFinite", "isNaN", "JSON", "Map", "Math", "NaN", "Number", "Object", "parseFloat", "parseInt", "Promise", "RangeError", "ReferenceError", "Reflect", "RegExp", "Set", "String", "Symbol", "SyntaxError", "TypeError", "URIError", "URL", "URLSearchParams", "WeakMap", "WeakSet"])
 const sandboxes = new Map<string, SandboxState>()
+const sessionLock = new SessionLock()
 
-export interface VmSandboxContext extends RlmReplContext {
-  client: PluginInput["client"]
-  config: RlmConfig
-  subcallModel?: RlmSubcallModel
+export interface VmSandboxContext {
+  sessionID: string
+  rlmSessionId: string
+  query: string
+  rootQuery: string
+  taskPrompt: string
+  manager: RlmContextManagerLike
   toolContext: ToolContext
+  client: PluginInput["client"]
+  directory: string
+  subcallAgent?: string
+  subcallModel?: RlmSubcallModel
+  config: RlmConfig
 }
 
 export function clearVmSandboxNamespace(sessionID?: string): void {
@@ -61,29 +69,34 @@ export function createVmSandboxRlmReplBackend(
 
   return {
     execute: async (code, context) => {
-      const binding = assertExecTrusted(context.sessionID, context.config)
-      const execConfig = resolveRlmExecConfig(context.config)
-      const sandbox = sandboxes.get(context.rlmSessionId) ?? createSandbox(context.rlmSessionId, runtimeDeps)
-      sandboxes.set(context.rlmSessionId, sandbox)
-      if (!("context" in sandbox.namespace)) {
-        sandbox.namespace.context = await readBlobContent(
-          context.manager,
-          context.rlmSessionId,
-          binding.contextVariableName,
-        )
-      }
+      const release = await sessionLock.acquire(context.rlmSessionId)
+      try {
+        const binding = assertExecTrusted(context.sessionID, context.config)
+        const execConfig = resolveRlmExecConfig(context.config)
+        const sandbox = sandboxes.get(context.rlmSessionId) ?? createSandbox(context.rlmSessionId, runtimeDeps)
+        sandboxes.set(context.rlmSessionId, sandbox)
+        if (!("context" in sandbox.namespace)) {
+          sandbox.namespace.context = await readBlobContent(
+            context.manager,
+            context.rlmSessionId,
+            binding.contextVariableName,
+          )
+        }
 
-      let printed = ""
-      installExecutionSurface(sandbox.namespace, context, runtimeDeps, (chunk) => {
-        printed = truncatePrintedOutput(printed, chunk, execConfig.print_limit_bytes)
-      })
-      if (sandbox.mode === "vm") {
-        await executeInVm(code, sandbox.context, runtimeDeps, execConfig.timeout_ms)
-      } else {
-        await executeInFallback(code, sandbox.namespace, execConfig.timeout_ms)
-      }
+        let printed = ""
+        installExecutionSurface(sandbox.namespace, context as VmSandboxContext, runtimeDeps, (chunk) => {
+          printed = truncatePrintedOutput(printed, chunk, execConfig.print_limit_bytes)
+        })
+        if (sandbox.mode === "vm") {
+          await executeInVm(code, sandbox.context, runtimeDeps, execConfig.timeout_ms)
+        } else {
+          await executeInFallback(code, sandbox.namespace, execConfig.timeout_ms)
+        }
 
-      return applyFeedback(printed, context.rlmSessionId, "rlm_plan", binding, context.config)
+        return applyFeedback(printed, context.rlmSessionId, "rlm_plan", binding, context.config)
+      } finally {
+        release()
+      }
     },
   }
 }
@@ -131,34 +144,7 @@ function installExecutionSurface(
   appendPrinted: (chunk: string) => void,
 ): void {
   lockDownNamespace(namespace)
-  namespace.getQuery = (): string => context.query
-  namespace.getVar = async (name: string): Promise<string> => readBlobContent(context.manager, context.rlmSessionId, name)
-  namespace.setVar = async (name: string, value: unknown): Promise<void> => {
-    await upsertBlobVariable(context.manager, context.rlmSessionId, name, toStoredContent(value))
-    namespace[name] = value
-  }
-  namespace.llm_query = async (prompt: string, options?: RlmLlmQueryOptions): Promise<string> => {
-    const subcall = await deps.runSyncSubcall({
-      client: context.client,
-      parentSessionID: context.sessionID,
-      defaultDirectory: context.directory,
-      title: options?.title ?? "RLM llm_query",
-      prompt,
-      agent: context.subcallAgent ?? context.toolContext.agent,
-      model: context.subcallModel,
-      tools: { rlm_finish: false, rlm_plan: false, rlm_probe: false, rlm_search: false },
-      abortSignal: context.toolContext.abort,
-    })
-    try {
-      if (!subcall.ok) throw new Error(subcall.error)
-      return subcall.terminalPayload?.final_answer ?? subcall.textOutput
-    } finally {
-      if (subcall.sessionID) deps.cleanupSyncSubcallSession(subcall.sessionID)
-    }
-  }
-  namespace.print = (value: unknown): void => {
-    appendPrinted(`${formatPrintedValue(value)}\n`)
-  }
+  installExecNamespace(namespace, context, context.config, appendPrinted, deps)
 }
 
 async function executeInVm(

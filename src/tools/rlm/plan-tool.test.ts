@@ -1,6 +1,6 @@
 import { describe, expect, it, mock, afterEach } from "bun:test"
 import { createRlmPlanTool } from "./plan-tool"
-import type { RlmConfig } from "../../config/schema/experimental"
+import { RlmConfigSchema, type RlmConfig } from "../../config/schema/experimental"
 import {
   InMemoryRlmManager,
   createSession,
@@ -11,13 +11,10 @@ import {
   unbindTestCoordinator,
 } from "./plan-tool.test-helpers"
 
-const defaultConfig: RlmConfig = {
+const defaultConfig: RlmConfig = RlmConfigSchema.parse({
   enabled: true,
   max_depth: 3,
-  context_storage_dir: ".sisyphus/rlm-contexts",
-  distill_threshold_tokens: 2000,
-  probe_max_lines: 200,
-}
+})
 
 const ROOT_SESSION_ID = "ses-root"
 const ROOT_RLM_SESSION_ID = testRlmSessionId(ROOT_SESSION_ID)
@@ -29,7 +26,7 @@ describe("createRlmPlanTool", () => {
 
   it("split and select produce manifest variables referencing real blob vars", async () => {
     const manager = new InMemoryRlmManager()
-    manager.seedSession(createSession(ROOT_RLM_SESSION_ID, "query", 0, 3))
+    manager.seedSession(createSession(ROOT_RLM_SESSION_ID, "query", "query", 0, 3))
     manager.createBlobVariable(ROOT_RLM_SESSION_ID, { name: "context", content: "aaabbbccc" })
     bindTestCoordinator(ROOT_SESSION_ID, manager)
 
@@ -49,11 +46,11 @@ describe("createRlmPlanTool", () => {
 
   it("map_rlm downgrades to map_llm at depth limit and expands {{query}}/{{item}}", async () => {
     const manager = new InMemoryRlmManager()
-    manager.seedSession(createSession(ROOT_RLM_SESSION_ID, "Persisted query", 1, 2))
+    manager.seedSession(createSession(ROOT_RLM_SESSION_ID, "Persisted query", "Persisted query", 1, 2))
     manager.createBlobVariable(ROOT_RLM_SESSION_ID, { name: "a", content: "one" })
     manager.createBlobVariable(ROOT_RLM_SESSION_ID, { name: "b", content: "two" })
     manager.createManifestVariable(ROOT_RLM_SESSION_ID, { name: "chunks", variableNames: ["a", "b"] })
-    bindTestCoordinator(ROOT_SESSION_ID, manager, { depth: 1, query: "Persisted query" })
+    bindTestCoordinator(ROOT_SESSION_ID, manager, { depth: 1, rootQuery: "Persisted query", taskPrompt: "Persisted query" })
 
     const prompts: string[] = []
     const initSpy = mock(async () => {
@@ -84,11 +81,11 @@ describe("createRlmPlanTool", () => {
 
   it("map_rlm uses terminal payload first, FINAL_VAR fallback second, and cleans up", async () => {
     const manager = new InMemoryRlmManager()
-    manager.seedSession(createSession(ROOT_RLM_SESSION_ID, "root query", 0, 3))
+    manager.seedSession(createSession(ROOT_RLM_SESSION_ID, "root query", "root query", 0, 3))
     manager.createBlobVariable(ROOT_RLM_SESSION_ID, { name: "x", content: "chunk-x" })
     manager.createBlobVariable(ROOT_RLM_SESSION_ID, { name: "y", content: "chunk-y" })
     manager.createManifestVariable(ROOT_RLM_SESSION_ID, { name: "chunks", variableNames: ["x", "y"] })
-    bindTestCoordinator(ROOT_SESSION_ID, manager, { query: "root query" })
+    bindTestCoordinator(ROOT_SESSION_ID, manager, { rootQuery: "root query", taskPrompt: "root query" })
 
     let callCount = 0
     const cleanupCalls: string[] = []
@@ -98,13 +95,16 @@ describe("createRlmPlanTool", () => {
       config: defaultConfig,
       deps: {
         initRlmSession: async (_ctx, input) => {
-          manager.seedSession(createSession(input.sessionId, input.query, input.depth ?? 0, input.maxDepth))
+          const rootQuery = input.rootQuery ?? input.query ?? ""
+          const taskPrompt = input.taskPrompt ?? input.query ?? ""
+          manager.seedSession(createSession(input.sessionId, rootQuery, taskPrompt, input.depth ?? 0, input.maxDepth))
           manager.createBlobVariable(input.sessionId, { name: "context", content: input.content ?? "" })
           return {
             sessionId: input.sessionId,
             depth: input.depth ?? 0,
             maxDepth: input.maxDepth,
-            query: input.query,
+            rootQuery,
+            taskPrompt,
             shouldDistill: false,
             contextMetadata: { contextVariableName: "context", contextSize: 0, contextType: "content", lineCount: 1 },
           }
@@ -116,7 +116,8 @@ describe("createRlmPlanTool", () => {
           callCount += 1
           const childID = `child-${callCount}`
           await input.onSessionCreated?.(childID)
-          if (callCount === 1) {
+          // Use childID to determine response for deterministic parallel execution
+          if (childID === "child-1") {
             return {
               ok: true,
               sessionID: childID,
@@ -136,14 +137,15 @@ describe("createRlmPlanTool", () => {
     }, createToolContext(ROOT_SESSION_ID))
 
     const mapped = manager.resolveManifestItems(ROOT_RLM_SESSION_ID, "mapped")
-    expect(mapped.map((blob) => manager.readBlobContent(blob))).toEqual(["from-finish", "from-final-var"])
+    const contents = mapped.map((blob) => manager.readBlobContent(blob)).sort()
+    expect(contents).toEqual(["from-finish", "from-final-var"].sort())
     expect(manager.deletedSessions.sort()).toEqual(["child-1", "child-2"])
     expect(cleanupCalls.sort()).toEqual(["child-1", "child-2"])
   })
 
   it("final_var halts the plan and returns terminal=false", async () => {
     const manager = new InMemoryRlmManager()
-    manager.seedSession(createSession(ROOT_RLM_SESSION_ID, "query", 0, 3))
+    manager.seedSession(createSession(ROOT_RLM_SESSION_ID, "query", "query", 0, 3))
     bindTestCoordinator(ROOT_SESSION_ID, manager)
 
     const tool = createRlmPlanTool({ client: dummyClient, directory: "/tmp", config: defaultConfig })

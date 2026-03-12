@@ -18,6 +18,39 @@ import {
 
 const DEFAULT_TIMEOUT_MS = 60_000
 const DEFAULT_POLL_INTERVAL_MS = 400
+const DEFAULT_BACKOFF_MULTIPLIER = 1.5
+const DEFAULT_JITTER_PERCENT = 15
+const DEFAULT_MAX_INTERVAL_MS = 5000
+
+export interface BackoffConfig {
+  initial_interval_ms: number
+  backoff_multiplier: number
+  jitter_percent: number
+  max_interval_ms: number
+}
+
+/**
+ * Pure function to calculate the next polling interval using exponential backoff with jitter.
+ * @param current - The current interval in milliseconds (0 for first poll)
+ * @param config - Backoff configuration
+ * @returns The next interval in milliseconds, capped at max_interval_ms
+ */
+export function calculateNextInterval(current: number, config: BackoffConfig): number {
+  // On first call (current=0), return initial_interval_ms
+  if (current === 0) {
+    return config.initial_interval_ms
+  }
+
+  // Calculate exponential backoff
+  let next = current * config.backoff_multiplier
+
+  // Apply jitter: random value between -jitter_percent and +jitter_percent
+  const jitterFactor = config.jitter_percent * (Math.random() - 0.5) * 2 // Range: -jitter% to +jitter%
+  next = next * (1 + jitterFactor / 100)
+
+  // Cap at max_interval_ms
+  return Math.min(Math.round(next), config.max_interval_ms)
+}
 
 type SessionStatus = { type?: string }
 type SessionMessage = {
@@ -37,6 +70,9 @@ export interface SyncSubcallInput {
   abortSignal?: AbortSignal
   timeoutMs?: number
   pollIntervalMs?: number
+  backoffMultiplier?: number
+  jitterPercent?: number
+  maxIntervalMs?: number
   onSessionCreated?: (sessionID: string) => Promise<void> | void
 }
 
@@ -117,14 +153,22 @@ export async function runSyncSubcall(
     })
 
     const timeoutMs = input.timeoutMs ?? DEFAULT_TIMEOUT_MS
-    const pollIntervalMs = input.pollIntervalMs ?? DEFAULT_POLL_INTERVAL_MS
+    const initialIntervalMs = input.pollIntervalMs ?? DEFAULT_POLL_INTERVAL_MS
+    const backoffConfig: BackoffConfig = {
+      initial_interval_ms: initialIntervalMs,
+      backoff_multiplier: input.backoffMultiplier ?? DEFAULT_BACKOFF_MULTIPLIER,
+      jitter_percent: input.jitterPercent ?? DEFAULT_JITTER_PERCENT,
+      max_interval_ms: input.maxIntervalMs ?? DEFAULT_MAX_INTERVAL_MS,
+    }
     const startAt = deps.now()
+    let currentInterval = 0
 
     while (deps.now() - startAt < timeoutMs) {
       if (input.abortSignal?.aborted) {
         return { ok: false, error: "Subcall aborted", sessionID }
       }
-      await deps.sleep(pollIntervalMs)
+      currentInterval = calculateNextInterval(currentInterval, backoffConfig)
+      await deps.sleep(currentInterval)
 
       const statusResponse = await input.client.session.status().catch(() => null)
       const statuses = normalizeSDKResponse(statusResponse, {} as Record<string, SessionStatus>)

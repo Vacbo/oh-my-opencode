@@ -38,7 +38,7 @@ export async function executeParallelMapLlm(
         parentSessionID: chatSessionId,
         defaultDirectory: options.directory,
         title: `RLM map_llm ${index + 1}/${items.length}`,
-        prompt: fillTemplate(input.prompt, session.query, itemContent),
+        prompt: fillTemplate(input.prompt, { rootQuery: session.rootQuery, taskPrompt: session.taskPrompt }, itemContent),
         agent: options.subcallAgent ?? context.agent,
         model: options.subcallModel,
         abortSignal: context.abort,

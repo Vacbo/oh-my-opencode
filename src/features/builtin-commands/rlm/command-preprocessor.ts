@@ -98,7 +98,8 @@ export function createRlmCommandPreprocessor(
       manager: contextManager,
       rlmSessionId: sessionId,
       depth: result.depth,
-      query,
+      rootQuery: query,
+      taskPrompt: query,
       contextVariableName: result.contextMetadata.contextVariableName,
       trusted: true,
     })

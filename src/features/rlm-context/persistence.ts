@@ -8,6 +8,51 @@ import { quarantineSession, validateBlobIntegrity } from "./persistence-helpers"
 const METADATA_FILE = "metadata.json"
 const QUARANTINE_DIR = ".quarantine"
 const DEFAULT_RECOVERY_TIMEOUT_MS = 5000
+const MAX_RETRIES = 3
+const RETRY_DELAYS_MS = [1000, 2000, 4000]
+
+const TRANSIENT_ERROR_CODES = new Set(["ENOENT", "EACCES", "EBUSY", "EAGAIN"])
+
+interface RetryOptions {
+  maxRetries?: number
+  delays?: number[]
+  isRetryable?: (error: unknown) => boolean
+}
+
+async function withRetry<T>(
+  fn: () => Promise<T>,
+  options: RetryOptions = {},
+): Promise<T> {
+  const maxRetries = options.maxRetries ?? MAX_RETRIES
+  const delays = options.delays ?? RETRY_DELAYS_MS
+  const isRetryable = options.isRetryable ?? ((error: unknown) => {
+    if (error instanceof Error && "code" in error) {
+      const err = error as NodeJS.ErrnoException
+      return TRANSIENT_ERROR_CODES.has(err.code ?? "")
+    }
+    return false
+  })
+
+  let lastError: unknown
+  let attempts = 0
+  for (let attempt = 1; attempt <= maxRetries + 1; attempt++) {
+    attempts = attempt
+    try {
+      return await fn()
+    } catch (error: unknown) {
+      lastError = error
+      if (attempt > maxRetries || !isRetryable(error)) {
+        const err = lastError as Error
+        throw new Error(`${err.message} (failed after ${attempt} attempt${attempt > 1 ? "s" : ""})`)
+      }
+      if (attempt <= delays.length) {
+        await new Promise((resolve) => setTimeout(resolve, delays[attempt - 1]))
+      }
+    }
+  }
+  const err = lastError as Error
+  throw new Error(`${err.message} (failed after ${attempts} attempts)`)
+}
 
 export interface PersistedVariableInfo {
   name: string
@@ -23,7 +68,9 @@ export interface PersistedVariableInfo {
 export interface PersistedSession {
   rootChatSessionId: string
   rlmSessionId: string
-  query: string
+  rootQuery: string
+  taskPrompt: string
+  query: string // Deprecated: kept for backward compat, equals taskPrompt
   depth: number
   maxDepth: number
   contextVariableName: string
@@ -37,6 +84,8 @@ export interface RlmPersistence {
   recover(coordinator: RlmSessionCoordinator, manager: RlmContextManager): Promise<number>
   cleanup(sessionId: string): Promise<void>
 }
+
+export { withRetry }
 
 function serializeVariable(v: RlmContextVariable): PersistedVariableInfo {
   const base: PersistedVariableInfo = {
@@ -106,10 +155,16 @@ async function recoverSessions(
       const raw = await readFile(metadataPath, "utf8")
       const persisted = JSON.parse(raw) as PersistedSession
       await validateBlobIntegrity(sessionDir, persisted.variableManifest)
+
+      // Migration: handle old sessions with query but no rootQuery/taskPrompt
+      const rootQuery = persisted.rootQuery ?? persisted.query ?? ""
+      const taskPrompt = persisted.taskPrompt ?? persisted.query ?? ""
+
       const session = await manager.initSession(persisted.rlmSessionId, {
         maxDepth: persisted.maxDepth,
         contextDir: storageDir,
-        query: persisted.query,
+        rootQuery,
+        taskPrompt,
         depth: persisted.depth,
       })
       for (const varInfo of persisted.variableManifest) {
@@ -119,7 +174,8 @@ async function recoverSessions(
         manager,
         rlmSessionId: persisted.rlmSessionId,
         depth: persisted.depth,
-        query: persisted.query,
+        rootQuery,
+        taskPrompt,
         contextVariableName: persisted.contextVariableName,
         trusted: persisted.trusted,
       })
@@ -160,7 +216,9 @@ export function createRlmPersistence(config: PersistenceConfig): RlmPersistence 
       const persisted: PersistedSession = {
         rootChatSessionId,
         rlmSessionId: binding.rlmSessionId,
-        query: binding.query,
+        rootQuery: binding.rootQuery,
+        taskPrompt: binding.taskPrompt,
+        query: binding.taskPrompt, // Deprecated: kept for backward compat
         depth: binding.depth,
         maxDepth: session.maxDepth,
         contextVariableName: binding.contextVariableName,
@@ -172,13 +230,21 @@ export function createRlmPersistence(config: PersistenceConfig): RlmPersistence 
       await mkdir(sessionDir, { recursive: true })
       const metadataPath = resolve(sessionDir, METADATA_FILE)
       const tempPath = `${metadataPath}.tmp`
-      await writeFile(tempPath, JSON.stringify(persisted, null, 2), "utf8")
-      await rename(tempPath, metadataPath)
+      await withRetry(
+        async () => {
+          await writeFile(tempPath, JSON.stringify(persisted, null, 2), "utf8")
+          await rename(tempPath, metadataPath)
+        },
+        { maxRetries: MAX_RETRIES, delays: RETRY_DELAYS_MS },
+      )
     },
 
     async recover(coord, mgr) {
       return Promise.race([
-        recoverSessions(storageDir, maxSessions, coord, mgr),
+        withRetry(
+          async () => recoverSessions(storageDir, maxSessions, coord, mgr),
+          { maxRetries: MAX_RETRIES, delays: RETRY_DELAYS_MS },
+        ),
         new Promise<number>((res) => setTimeout(() => res(0), recoveryTimeout)),
       ])
     },

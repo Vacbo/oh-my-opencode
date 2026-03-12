@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto"
+import { existsSync } from "node:fs"
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises"
 import type {
   InitRlmSessionOptions,
@@ -15,6 +16,7 @@ import {
   type CreateManifestVariableInput,
   type VariableOptions,
 } from "./variable-input-parser"
+import { RlmErrorCode, rlmError } from "./error-codes"
 
 function countLines(content: string): number {
   if (content.length === 0) {
@@ -44,7 +46,8 @@ export class RlmContextManager {
       depth: options.depth ?? 0,
       maxDepth: options.maxDepth,
       contextDir: options.contextDir,
-      query: options.query,
+      rootQuery: options.rootQuery,
+      taskPrompt: options.taskPrompt,
       shouldDistill: options.shouldDistill ?? false,
       parentSessionId: options.parentSessionId,
       variables: new Map(),
@@ -142,10 +145,48 @@ export class RlmContextManager {
     const storedVariable = this.getStoredManifestVariable(variable.sessionId, variable.name)
     const manifestPath = resolveSessionFilePath(storedVariable.session.contextDir, storedVariable.session.sessionId, storedVariable.variable.filePath)
     const content = await readFile(manifestPath, "utf8")
-    const names = JSON.parse(content) as unknown
-    if (!Array.isArray(names) || !names.every((name) => typeof name === "string")) {
-      throw new Error(`Invalid manifest payload for variable: ${variable.name}`)
+
+    let names: unknown
+    try {
+      names = JSON.parse(content)
+    } catch {
+      throw rlmError(RlmErrorCode.MANIFEST_CORRUPT_ERROR, {
+        message: `Manifest file contains invalid JSON for variable: ${variable.name}`,
+        variableName: variable.name,
+      })
     }
+
+    if (!Array.isArray(names) || !names.every((name) => typeof name === "string")) {
+      throw rlmError(RlmErrorCode.MANIFEST_CORRUPT_ERROR, {
+        message: `Manifest must be an array of strings for variable: ${variable.name}`,
+        variableName: variable.name,
+      })
+    }
+
+    const blobFilePaths = new Map<string, string>()
+    for (const [, v] of storedVariable.session.variables) {
+      if (v.storageKind === "blob") {
+        const blobPath = resolveSessionFilePath(storedVariable.session.contextDir, storedVariable.session.sessionId, v.filePath)
+        blobFilePaths.set(v.name, blobPath)
+      }
+    }
+
+    const missingBlobs: string[] = []
+    for (const name of names) {
+      const blobPath = blobFilePaths.get(name)
+      if (!blobPath || !existsSync(blobPath)) {
+        missingBlobs.push(name)
+      }
+    }
+
+    if (missingBlobs.length > 0) {
+      throw rlmError(RlmErrorCode.MANIFEST_INTEGRITY_ERROR, {
+        message: `Manifest references missing blob variables: ${missingBlobs.join(", ")}`,
+        missingVariables: missingBlobs,
+        variableName: variable.name,
+      })
+    }
+
     return names
   }
 

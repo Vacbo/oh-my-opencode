@@ -2,6 +2,7 @@ import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
 import { tmpdir } from "node:os"
 import type { RlmBlobVariable, RlmContextVariable, RlmManifestVariable, RlmSessionState } from "./types"
+import { RlmErrorCode } from "./error-codes"
 
 type ExpectChain = {
   toBe: (expected: unknown) => void
@@ -75,11 +76,12 @@ describe("rlm-context manager (RED)", () => {
   it("init session stores query, depth=0, and shouldDistill=false", async () => {
     const manager = await createManager()
     const contextDir = createTempDir()
-    await manager.initSession("ses-root", { contextDir, maxDepth: 2, query: "What is in the context?" })
+    await manager.initSession("ses-root", { contextDir, maxDepth: 2, rootQuery: "What is in the context?", taskPrompt: "What is in the context?" })
     const session = await manager.getSession("ses-root")
 
     expect(session).toBeDefined()
-    expect(session?.query).toBe("What is in the context?")
+    expect(session?.rootQuery).toBe("What is in the context?")
+    expect(session?.taskPrompt).toBe("What is in the context?")
     expect(session?.depth).toBe(0)
     expect(session?.shouldDistill).toBe(false)
   })
@@ -88,7 +90,7 @@ describe("rlm-context manager (RED)", () => {
     const manager = await createManager()
     const contextDir = createTempDir()
     const sessionId = "ses-blob-content"
-    await manager.initSession(sessionId, { contextDir, maxDepth: 2, query: "summarize" })
+    await manager.initSession(sessionId, { contextDir, maxDepth: 2, rootQuery: "summarize", taskPrompt: "summarize" })
     const variable = await manager.createBlobVariable(
       sessionId,
       { name: "context", content: "line-1\nline-2\nline-3" },
@@ -106,7 +108,7 @@ describe("rlm-context manager (RED)", () => {
     const sourcePath = join(contextDir, "source.txt")
     writeFileSync(sourcePath, "alpha\nbeta\ngamma\n", "utf8")
     const sessionId = "ses-blob-file"
-    await manager.initSession(sessionId, { contextDir, maxDepth: 2, query: "summarize source" })
+    await manager.initSession(sessionId, { contextDir, maxDepth: 2, rootQuery: "summarize source", taskPrompt: "summarize source" })
     const variable = await manager.createBlobVariable(
       sessionId,
       { name: "source_blob", file_path: sourcePath },
@@ -122,7 +124,7 @@ describe("rlm-context manager (RED)", () => {
     const manager = await createManager()
     const contextDir = createTempDir()
     const sessionId = "ses-manifest-create"
-    await manager.initSession(sessionId, { contextDir, maxDepth: 2, query: "order check" })
+    await manager.initSession(sessionId, { contextDir, maxDepth: 2, rootQuery: "order check", taskPrompt: "order check" })
     await manager.createBlobVariable(sessionId, { name: "part_a", content: "A" })
     await manager.createBlobVariable(sessionId, { name: "part_b", content: "B" })
     const manifest = await manager.createManifestVariable(
@@ -140,7 +142,7 @@ describe("rlm-context manager (RED)", () => {
     const manager = await createManager()
     const contextDir = createTempDir()
     const sessionId = "ses-manifest-read"
-    await manager.initSession(sessionId, { contextDir, maxDepth: 2, query: "read order" })
+    await manager.initSession(sessionId, { contextDir, maxDepth: 2, rootQuery: "read order", taskPrompt: "read order" })
     await manager.createBlobVariable(sessionId, { name: "left", content: "L" })
     await manager.createBlobVariable(sessionId, { name: "right", content: "R" })
     const manifest = await manager.createManifestVariable(sessionId, {
@@ -155,7 +157,7 @@ describe("rlm-context manager (RED)", () => {
     const manager = await createManager()
     const contextDir = createTempDir()
     const sessionId = "ses-manifest-resolve"
-    await manager.initSession(sessionId, { contextDir, maxDepth: 2, query: "resolve" })
+    await manager.initSession(sessionId, { contextDir, maxDepth: 2, rootQuery: "resolve", taskPrompt: "resolve" })
     await manager.createBlobVariable(sessionId, { name: "first", content: "1" })
     await manager.createBlobVariable(sessionId, { name: "second", content: "2" })
     await manager.createManifestVariable(sessionId, {
@@ -172,7 +174,7 @@ describe("rlm-context manager (RED)", () => {
     const manager = await createManager()
     const contextDir = createTempDir()
     const sessionId = "ses-get-by-name"
-    await manager.initSession(sessionId, { contextDir, maxDepth: 2, query: "metadata" })
+    await manager.initSession(sessionId, { contextDir, maxDepth: 2, rootQuery: "metadata", taskPrompt: "metadata" })
     await manager.createBlobVariable(sessionId, { name: "meta_blob", content: "payload" })
     const variable = await manager.getVariableByName(sessionId, "meta_blob")
 
@@ -185,7 +187,7 @@ describe("rlm-context manager (RED)", () => {
     const manager = await createManager()
     const contextDir = createTempDir()
     const sessionId = "ses-list-vars"
-    await manager.initSession(sessionId, { contextDir, maxDepth: 2, query: "list variables" })
+    await manager.initSession(sessionId, { contextDir, maxDepth: 2, rootQuery: "list variables", taskPrompt: "list variables" })
     await manager.createBlobVariable(sessionId, { name: "blob_one", content: "one" })
     await manager.createBlobVariable(sessionId, { name: "blob_two", content: "two" })
     await manager.createManifestVariable(sessionId, {
@@ -205,7 +207,7 @@ describe("rlm-context manager (RED)", () => {
     const manager = await createManager()
     const contextDir = createTempDir()
     const sessionId = "ses-delete"
-    await manager.initSession(sessionId, { contextDir, maxDepth: 2, query: "delete me" })
+    await manager.initSession(sessionId, { contextDir, maxDepth: 2, rootQuery: "delete me", taskPrompt: "delete me" })
     await manager.createBlobVariable(sessionId, { name: "to_delete", content: "payload" })
     const sessionDir = join(contextDir, sessionId)
     expect(existsSync(sessionDir)).toBe(true)
@@ -246,7 +248,7 @@ describe("rlm-context manager edge cases (SCENARIO 3)", () => {
     const manager = await createManager()
     const contextDir = createTempDir()
     const sessionId = "ses-duplicate-name"
-    await manager.initSession(sessionId, { contextDir, maxDepth: 2, query: "test" })
+    await manager.initSession(sessionId, { contextDir, maxDepth: 2, rootQuery: "test", taskPrompt: "test" })
     await manager.createBlobVariable(sessionId, { name: "duplicate", content: "first" })
     
     try {
@@ -262,7 +264,7 @@ describe("rlm-context manager edge cases (SCENARIO 3)", () => {
     const manager = await createManager()
     const contextDir = createTempDir()
     const sessionId = "ses-invalid-name"
-    await manager.initSession(sessionId, { contextDir, maxDepth: 2, query: "test" })
+    await manager.initSession(sessionId, { contextDir, maxDepth: 2, rootQuery: "test", taskPrompt: "test" })
     
     try {
       await manager.createBlobVariable(sessionId, { name: "../evil", content: "data" })
@@ -277,7 +279,7 @@ describe("rlm-context manager edge cases (SCENARIO 3)", () => {
     const manager = await createManager()
     const contextDir = createTempDir()
     const sessionId = "ses-special-chars"
-    await manager.initSession(sessionId, { contextDir, maxDepth: 2, query: "test" })
+    await manager.initSession(sessionId, { contextDir, maxDepth: 2, rootQuery: "test", taskPrompt: "test" })
     
     try {
       await manager.createBlobVariable(sessionId, { name: "var@name!", content: "data" })
@@ -292,7 +294,7 @@ describe("rlm-context manager edge cases (SCENARIO 3)", () => {
     const manager = await createManager()
     const contextDir = createTempDir()
     const sessionId = "ses-missing-source"
-    await manager.initSession(sessionId, { contextDir, maxDepth: 2, query: "test" })
+    await manager.initSession(sessionId, { contextDir, maxDepth: 2, rootQuery: "test", taskPrompt: "test" })
     
     try {
       await manager.createBlobVariable(sessionId, { name: "incomplete" } as unknown as any)
@@ -307,7 +309,7 @@ describe("rlm-context manager edge cases (SCENARIO 3)", () => {
     const manager = await createManager()
     const contextDir = createTempDir()
     const sessionId = "ses-both-sources"
-    await manager.initSession(sessionId, { contextDir, maxDepth: 2, query: "test" })
+    await manager.initSession(sessionId, { contextDir, maxDepth: 2, rootQuery: "test", taskPrompt: "test" })
     
     try {
       await manager.createBlobVariable(sessionId, { name: "both", content: "data", file_path: "/path" } as any)
@@ -322,7 +324,7 @@ describe("rlm-context manager edge cases (SCENARIO 3)", () => {
     const manager = await createManager()
     const contextDir = createTempDir()
     const sessionId = "ses-no-name"
-    await manager.initSession(sessionId, { contextDir, maxDepth: 2, query: "test" })
+    await manager.initSession(sessionId, { contextDir, maxDepth: 2, rootQuery: "test", taskPrompt: "test" })
     
     try {
       await manager.createBlobVariable(sessionId, { content: "data" } as any)
@@ -337,7 +339,7 @@ describe("rlm-context manager edge cases (SCENARIO 3)", () => {
     const manager = await createManager()
     const contextDir = createTempDir()
     const sessionId = "ses-manifest-no-name"
-    await manager.initSession(sessionId, { contextDir, maxDepth: 2, query: "test" })
+    await manager.initSession(sessionId, { contextDir, maxDepth: 2, rootQuery: "test", taskPrompt: "test" })
     
     try {
       await manager.createManifestVariable(sessionId, { variableNames: [] } as any)
@@ -352,7 +354,7 @@ describe("rlm-context manager edge cases (SCENARIO 3)", () => {
     const manager = await createManager()
     const contextDir = createTempDir()
     const sessionId = "ses-manifest-bad-array"
-    await manager.initSession(sessionId, { contextDir, maxDepth: 2, query: "test" })
+    await manager.initSession(sessionId, { contextDir, maxDepth: 2, rootQuery: "test", taskPrompt: "test" })
     
     try {
       await manager.createManifestVariable(sessionId, { name: "bad", variableNames: "not-array" } as any)
@@ -367,7 +369,7 @@ describe("rlm-context manager edge cases (SCENARIO 3)", () => {
     const manager = await createManager()
     const contextDir = createTempDir()
     const sessionId = "ses-manifest-missing-ref"
-    await manager.initSession(sessionId, { contextDir, maxDepth: 2, query: "test" })
+    await manager.initSession(sessionId, { contextDir, maxDepth: 2, rootQuery: "test", taskPrompt: "test" })
     await manager.createBlobVariable(sessionId, { name: "exists", content: "data" })
     
     try {
@@ -401,7 +403,7 @@ describe("rlm-context manager edge cases (SCENARIO 3)", () => {
     const manager = await createManager()
     const contextDir = createTempDir()
     const sessionId = "ses-empty-manifest"
-    await manager.initSession(sessionId, { contextDir, maxDepth: 2, query: "test" })
+    await manager.initSession(sessionId, { contextDir, maxDepth: 2, rootQuery: "test", taskPrompt: "test" })
     
     const manifest = await manager.createManifestVariable(sessionId, { name: "empty", variableNames: [] })
     expect(manifest.itemCount).toBe(0)
@@ -414,7 +416,7 @@ describe("rlm-context manager edge cases (SCENARIO 3)", () => {
     const manager = await createManager()
     const contextDir = createTempDir()
     const sessionId = "ses-empty-blob"
-    await manager.initSession(sessionId, { contextDir, maxDepth: 2, query: "test" })
+    await manager.initSession(sessionId, { contextDir, maxDepth: 2, rootQuery: "test", taskPrompt: "test" })
     
     const variable = await manager.createBlobVariable(sessionId, { name: "empty", content: "" })
     expect(variable.lineCount).toBe(0)
@@ -425,7 +427,7 @@ describe("rlm-context manager edge cases (SCENARIO 3)", () => {
     const manager = await createManager()
     const contextDir = createTempDir()
     const sessionId = "ses-single-line"
-    await manager.initSession(sessionId, { contextDir, maxDepth: 2, query: "test" })
+    await manager.initSession(sessionId, { contextDir, maxDepth: 2, rootQuery: "test", taskPrompt: "test" })
     
     const variable = await manager.createBlobVariable(sessionId, { name: "single", content: "one line" })
     expect(variable.lineCount).toBe(1)
@@ -435,7 +437,7 @@ describe("rlm-context manager edge cases (SCENARIO 3)", () => {
     const manager = await createManager()
     const contextDir = createTempDir()
     const sessionId = "ses-multiline"
-    await manager.initSession(sessionId, { contextDir, maxDepth: 2, query: "test" })
+    await manager.initSession(sessionId, { contextDir, maxDepth: 2, rootQuery: "test", taskPrompt: "test" })
     
     const content = "line1\r\nline2\nline3\r\nline4"
     const variable = await manager.createBlobVariable(sessionId, { name: "multiline", content })
@@ -446,7 +448,7 @@ describe("rlm-context manager edge cases (SCENARIO 3)", () => {
     const manager = await createManager()
     const contextDir = createTempDir()
     const sessionId = "ses-large"
-    await manager.initSession(sessionId, { contextDir, maxDepth: 2, query: "test" })
+    await manager.initSession(sessionId, { contextDir, maxDepth: 2, rootQuery: "test", taskPrompt: "test" })
     
     const largeContent = "x".repeat(1000000) // 1MB
     const variable = await manager.createBlobVariable(sessionId, { name: "large", content: largeContent })
@@ -458,7 +460,7 @@ describe("rlm-context manager edge cases (SCENARIO 3)", () => {
     const manager = await createManager()
     const contextDir = createTempDir()
     const sessionId = "ses-read-missing"
-    await manager.initSession(sessionId, { contextDir, maxDepth: 2, query: "test" })
+    await manager.initSession(sessionId, { contextDir, maxDepth: 2, rootQuery: "test", taskPrompt: "test" })
     
     try {
       await manager.readBlobContent({ sessionId, name: "missing" } as any)
@@ -473,7 +475,7 @@ describe("rlm-context manager edge cases (SCENARIO 3)", () => {
     const manager = await createManager()
     const contextDir = createTempDir()
     const sessionId = "ses-manifest-read-missing"
-    await manager.initSession(sessionId, { contextDir, maxDepth: 2, query: "test" })
+    await manager.initSession(sessionId, { contextDir, maxDepth: 2, rootQuery: "test", taskPrompt: "test" })
     
     try {
       await manager.readManifest({ sessionId, name: "missing" } as any)
@@ -488,13 +490,11 @@ describe("rlm-context manager edge cases (SCENARIO 3)", () => {
     const manager = await createManager()
     const contextDir = createTempDir()
     const sessionId = "ses-resolve-missing"
-    await manager.initSession(sessionId, { contextDir, maxDepth: 2, query: "test" })
+    await manager.initSession(sessionId, { contextDir, maxDepth: 2, rootQuery: "test", taskPrompt: "test" })
     await manager.createBlobVariable(sessionId, { name: "exists", content: "data" })
     
-    // Manually corrupt the manifest to reference a missing variable
     await manager.createManifestVariable(sessionId, { name: "manifest", variableNames: ["exists"] })
     
-    // Get the session and manually remove the blob variable to simulate corruption
     const session = await manager.getSession(sessionId)
     if (session) {
       session.variables.delete("exists")
@@ -502,10 +502,10 @@ describe("rlm-context manager edge cases (SCENARIO 3)", () => {
     
     try {
       await manager.resolveManifestItems(sessionId, "manifest")
-      expect(false).toBe(true) // Should not reach here
+      expect(false).toBe(true)
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
-      expect(message.includes("unknown blob variable")).toBe(true)
+      expect(message.includes("missing blob")).toBe(true)
     }
   })
 
@@ -521,7 +521,7 @@ describe("rlm-context manager edge cases (SCENARIO 3)", () => {
     const manager = await createManager()
     const contextDir = createTempDir()
     const sessionId = "ses-cleanup"
-    await manager.initSession(sessionId, { contextDir, maxDepth: 2, query: "test" })
+    await manager.initSession(sessionId, { contextDir, maxDepth: 2, rootQuery: "test", taskPrompt: "test" })
     
     expect(await manager.getSession(sessionId)).toBeDefined()
     await manager.deleteSession(sessionId)
@@ -534,7 +534,7 @@ describe("rlm-context manager edge cases (SCENARIO 3)", () => {
     const sessionId = "ses-max-depth"
     const maxDepth = 3
     
-    const session = await manager.initSession(sessionId, { contextDir, maxDepth, query: "test", depth: 0 })
+    const session = await manager.initSession(sessionId, { contextDir, maxDepth, rootQuery: "test", taskPrompt: "test", depth: 0 })
     expect(session.maxDepth).toBe(maxDepth)
     expect(session.depth).toBe(0)
   })
@@ -544,7 +544,7 @@ describe("rlm-context manager edge cases (SCENARIO 3)", () => {
     const contextDir = createTempDir()
     const sessionId = "ses-depth-param"
     
-    const session = await manager.initSession(sessionId, { contextDir, maxDepth: 5, query: "test", depth: 2 })
+    const session = await manager.initSession(sessionId, { contextDir, maxDepth: 5, rootQuery: "test", taskPrompt: "test", depth: 2 })
     expect(session.depth).toBe(2)
   })
 
@@ -553,7 +553,7 @@ describe("rlm-context manager edge cases (SCENARIO 3)", () => {
     const contextDir = createTempDir()
     const sessionId = "ses-default-depth"
     
-    const session = await manager.initSession(sessionId, { contextDir, maxDepth: 5, query: "test" })
+    const session = await manager.initSession(sessionId, { contextDir, maxDepth: 5, rootQuery: "test", taskPrompt: "test" })
     expect(session.depth).toBe(0)
   })
 
@@ -562,7 +562,7 @@ describe("rlm-context manager edge cases (SCENARIO 3)", () => {
     const contextDir = createTempDir()
     const sessionId = "ses-default-distill"
     
-    const session = await manager.initSession(sessionId, { contextDir, maxDepth: 5, query: "test" })
+    const session = await manager.initSession(sessionId, { contextDir, maxDepth: 5, rootQuery: "test", taskPrompt: "test" })
     expect(session.shouldDistill).toBe(false)
   })
 
@@ -571,7 +571,7 @@ describe("rlm-context manager edge cases (SCENARIO 3)", () => {
     const contextDir = createTempDir()
     const sessionId = "ses-distill-param"
     
-    const session = await manager.initSession(sessionId, { contextDir, maxDepth: 5, query: "test", shouldDistill: true })
+    const session = await manager.initSession(sessionId, { contextDir, maxDepth: 5, rootQuery: "test", taskPrompt: "test", shouldDistill: true })
     expect(session.shouldDistill).toBe(true)
   })
 
@@ -580,10 +580,200 @@ describe("rlm-context manager edge cases (SCENARIO 3)", () => {
     const contextDir = createTempDir()
     const sessionId = "ses-idempotent"
     
-    const session1 = await manager.initSession(sessionId, { contextDir, maxDepth: 5, query: "first" })
-    const session2 = await manager.initSession(sessionId, { contextDir, maxDepth: 10, query: "second" })
+    const session1 = await manager.initSession(sessionId, { contextDir, maxDepth: 5, rootQuery: "first", taskPrompt: "first" })
+    const session2 = await manager.initSession(sessionId, { contextDir, maxDepth: 10, rootQuery: "second", taskPrompt: "second" })
     
     expect(session1.sessionId).toBe(session2.sessionId)
-    expect(session1.query).toBe("first") // Original query preserved
+    expect(session1.rootQuery).toBe("first") // Original query preserved
+  })
+})
+
+describe("manifest integrity verification (T3)", () => {
+  it("readManifest throws MANIFEST_INTEGRITY_ERROR when referenced blob file is missing", async () => {
+    const manager = await createManager()
+    const contextDir = createTempDir()
+    const sessionId = "ses-integrity-missing"
+    await manager.initSession(sessionId, { contextDir, maxDepth: 2, rootQuery: "test", taskPrompt: "test" })
+    
+    const blob = await manager.createBlobVariable(sessionId, { name: "existing", content: "data" })
+    
+    const manifest = await manager.createManifestVariable(sessionId, {
+      name: "test_manifest",
+      variableNames: ["existing"],
+    })
+    
+    const sessionDir = join(contextDir, sessionId)
+    const blobPath = join(sessionDir, blob.filePath)
+    rmSync(blobPath, { force: true })
+    
+    try {
+      await manager.readManifest(manifest)
+      expect(false).toBe(true)
+    } catch (error) {
+      const err = error as { code?: RlmErrorCode; message?: string }
+      expect(err.code).toBe(RlmErrorCode.MANIFEST_INTEGRITY_ERROR)
+      expect(err.message?.includes("existing")).toBe(true)
+    }
+  })
+
+  it("readManifest throws MANIFEST_INTEGRITY_ERROR with all missing blob names when multiple are missing", async () => {
+    const manager = await createManager()
+    const contextDir = createTempDir()
+    const sessionId = "ses-integrity-multiple"
+    await manager.initSession(sessionId, { contextDir, maxDepth: 2, rootQuery: "test", taskPrompt: "test" })
+    
+    // Create two blob variables
+    await manager.createBlobVariable(sessionId, { name: "blob_a", content: "A" })
+    await manager.createBlobVariable(sessionId, { name: "blob_b", content: "B" })
+    
+    // Create a manifest referencing both blobs
+    const manifest = await manager.createManifestVariable(sessionId, {
+      name: "multi_manifest",
+      variableNames: ["blob_a", "blob_b"],
+    })
+    
+    // Delete both blob files from disk
+    const session = await manager.getSession(sessionId)
+    if (session) {
+      for (const [, variable] of session.variables) {
+        if (variable.storageKind === "blob") {
+          const blobPath = join(contextDir, sessionId, variable.filePath)
+          rmSync(blobPath, { force: true })
+        }
+      }
+    }
+    
+    // readManifest should throw MANIFEST_INTEGRITY_ERROR with both missing names
+    try {
+      await manager.readManifest(manifest)
+      expect(false).toBe(true) // Should not reach here
+    } catch (error) {
+      const err = error as { code?: RlmErrorCode; message?: string }
+      expect(err.code).toBe(RlmErrorCode.MANIFEST_INTEGRITY_ERROR)
+      expect(err.message?.includes("blob_a")).toBe(true)
+      expect(err.message?.includes("blob_b")).toBe(true)
+    }
+  })
+
+  it("readManifest throws MANIFEST_CORRUPT_ERROR when manifest file contains invalid JSON", async () => {
+    const manager = await createManager()
+    const contextDir = createTempDir()
+    const sessionId = "ses-corrupt-json"
+    await manager.initSession(sessionId, { contextDir, maxDepth: 2, rootQuery: "test", taskPrompt: "test" })
+    
+    // Create a blob variable
+    await manager.createBlobVariable(sessionId, { name: "blob", content: "data" })
+    
+    // Create a manifest
+    const manifest = await manager.createManifestVariable(sessionId, {
+      name: "corrupt_manifest",
+      variableNames: ["blob"],
+    })
+    
+    // Corrupt the manifest file on disk
+    const manifestPath = join(contextDir, sessionId, manifest.filePath)
+    writeFileSync(manifestPath, "{ invalid json }", "utf8")
+    
+    // readManifest should throw MANIFEST_CORRUPT_ERROR
+    try {
+      await manager.readManifest(manifest)
+      expect(false).toBe(true) // Should not reach here
+    } catch (error) {
+      const err = error as { code?: RlmErrorCode; message?: string }
+      expect(err.code).toBe(RlmErrorCode.MANIFEST_CORRUPT_ERROR)
+    }
+  })
+
+  it("readManifest throws MANIFEST_CORRUPT_ERROR when manifest is not an array", async () => {
+    const manager = await createManager()
+    const contextDir = createTempDir()
+    const sessionId = "ses-not-array"
+    await manager.initSession(sessionId, { contextDir, maxDepth: 2, rootQuery: "test", taskPrompt: "test" })
+    
+    // Create a blob variable
+    await manager.createBlobVariable(sessionId, { name: "blob", content: "data" })
+    
+    // Create a manifest
+    const manifest = await manager.createManifestVariable(sessionId, {
+      name: "not_array_manifest",
+      variableNames: ["blob"],
+    })
+    
+    // Corrupt the manifest to be an object instead of array
+    const manifestPath = join(contextDir, sessionId, manifest.filePath)
+    writeFileSync(manifestPath, '{"items": ["blob"]}', "utf8")
+    
+    // readManifest should throw MANIFEST_CORRUPT_ERROR
+    try {
+      await manager.readManifest(manifest)
+      expect(false).toBe(true) // Should not reach here
+    } catch (error) {
+      const err = error as { code?: RlmErrorCode; message?: string }
+      expect(err.code).toBe(RlmErrorCode.MANIFEST_CORRUPT_ERROR)
+    }
+  })
+
+  it("readManifest throws MANIFEST_CORRUPT_ERROR when manifest contains non-string items", async () => {
+    const manager = await createManager()
+    const contextDir = createTempDir()
+    const sessionId = "ses-non-string"
+    await manager.initSession(sessionId, { contextDir, maxDepth: 2, rootQuery: "test", taskPrompt: "test" })
+    
+    // Create a manifest
+    const manifest = await manager.createManifestVariable(sessionId, {
+      name: "non_string_manifest",
+      variableNames: [],
+    })
+    
+    // Corrupt the manifest to have non-string items
+    const manifestPath = join(contextDir, sessionId, manifest.filePath)
+    writeFileSync(manifestPath, '["string", 123, null]', "utf8")
+    
+    // readManifest should throw MANIFEST_CORRUPT_ERROR
+    try {
+      await manager.readManifest(manifest)
+      expect(false).toBe(true) // Should not reach here
+    } catch (error) {
+      const err = error as { code?: RlmErrorCode; message?: string }
+      expect(err.code).toBe(RlmErrorCode.MANIFEST_CORRUPT_ERROR)
+    }
+  })
+
+  it("readManifest succeeds when all referenced blob files exist", async () => {
+    const manager = await createManager()
+    const contextDir = createTempDir()
+    const sessionId = "ses-valid-manifest"
+    await manager.initSession(sessionId, { contextDir, maxDepth: 2, rootQuery: "test", taskPrompt: "test" })
+    
+    // Create blob variables
+    await manager.createBlobVariable(sessionId, { name: "blob1", content: "content1" })
+    await manager.createBlobVariable(sessionId, { name: "blob2", content: "content2" })
+    
+    // Create a manifest
+    const manifest = await manager.createManifestVariable(sessionId, {
+      name: "valid_manifest",
+      variableNames: ["blob1", "blob2"],
+    })
+    
+    // readManifest should succeed and return the variable names
+    const items = await manager.readManifest(manifest)
+    expect(items).toEqual(["blob1", "blob2"])
+  })
+
+  it("readManifest succeeds with empty manifest when no blobs are referenced", async () => {
+    const manager = await createManager()
+    const contextDir = createTempDir()
+    const sessionId = "ses-empty-manifest-valid"
+    await manager.initSession(sessionId, { contextDir, maxDepth: 2, rootQuery: "test", taskPrompt: "test" })
+    
+    // Create an empty manifest
+    const manifest = await manager.createManifestVariable(sessionId, {
+      name: "empty_manifest",
+      variableNames: [],
+    })
+    
+    // readManifest should succeed and return empty array
+    const items = await manager.readManifest(manifest)
+    expect(items).toEqual([])
   })
 })

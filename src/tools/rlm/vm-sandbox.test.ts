@@ -22,7 +22,8 @@ type TestSession = {
   sessionID: string
   rlmSessionId: string
   manager: InMemoryRlmManager
-  query: string
+  rootQuery: string
+  taskPrompt: string
 }
 
 const boundSessions: TestSession[] = []
@@ -41,17 +42,24 @@ function setupSession(sessionID: string, options: {
   const rlmSessionId = testRlmSessionId(sessionID)
   const contextVariableName = options.contextVariableName ?? "context"
   const query = options.query ?? "test query"
-  manager.seedSession(createSession(rlmSessionId, query, 0, 3))
+  manager.seedSession(createSession(rlmSessionId, query, query, 0, 3))
   manager.createBlobVariable(rlmSessionId, {
     name: contextVariableName,
     content: options.contextContent ?? "seed context",
   })
   bindTestCoordinator(sessionID, manager, {
     trusted: options.trusted ?? true,
-    query,
+    rootQuery: query,
+    taskPrompt: query,
     contextVariableName,
   })
-  const session = { sessionID, rlmSessionId, manager, query }
+  const session = {
+    sessionID,
+    rlmSessionId,
+    manager,
+    rootQuery: `${query} root`,
+    taskPrompt: `${query} task`,
+  }
   boundSessions.push(session)
   return session
 }
@@ -60,13 +68,38 @@ function createContext(session: TestSession, config: RlmConfig) {
   return {
     sessionID: session.sessionID,
     rlmSessionId: session.rlmSessionId,
-    query: session.query,
+    rootQuery: session.rootQuery,
+    taskPrompt: session.taskPrompt,
     manager: session.manager,
     toolContext: createToolContext(session.sessionID),
     client: dummyClient,
     directory: "/tmp",
     config,
   }
+}
+
+function createDeferred<T>(): {
+  promise: Promise<T>
+  reject: (reason?: unknown) => void
+  resolve: (value: T | PromiseLike<T>) => void
+} {
+  let resolve!: (value: T | PromiseLike<T>) => void
+  let reject!: (reason?: unknown) => void
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise
+    reject = rejectPromise
+  })
+  return { promise, resolve, reject }
+}
+
+async function waitFor(predicate: () => boolean): Promise<void> {
+  for (let index = 0; index < 20; index += 1) {
+    if (predicate()) {
+      return
+    }
+    await Bun.sleep(0)
+  }
+  throw new Error("condition not met")
 }
 
 afterEach(() => {
@@ -173,11 +206,11 @@ describe("vm sandbox RLM repl backend", () => {
     const backend = createVmSandboxRlmReplBackend()
 
     const output = await backend.execute(
-      'await Promise.resolve(); print(getQuery())',
+      'await Promise.resolve(); print(`${getRootQuery()}|${getQuery()}`)',
       createContext(session, createConfig()),
     )
 
-    expect(output).toBe("summarize this\n")
+    expect(output).toBe("summarize this root|summarize this task\n")
   })
 
   it("keeps session namespaces isolated", async () => {
@@ -240,5 +273,50 @@ describe("vm sandbox RLM repl backend", () => {
 
     await backend.execute('context = context.toUpperCase()', context)
     expect(await backend.execute("print(context)", context)).toBe("SEED CONTEXT\n")
+  })
+
+  it("serializes parallel exec for the same session and preserves mutation order", async () => {
+    const session = setupSession("ses-vm-serialized")
+    const gate = createDeferred<void>()
+    const runSyncSubcall = mock(async ({ prompt }) => {
+      expect(prompt).toBe("hold")
+      await gate.promise
+      return { ok: true as const, sessionID: "leaf-hold", textOutput: "done", messages: [] }
+    })
+    const backend = createVmSandboxRlmReplBackend({
+      cleanupSyncSubcallSession: mock(() => {}),
+      runSyncSubcall,
+    })
+    const context = createContext(session, createConfig())
+
+    const firstExec = backend.execute(
+      'history = ["first"]; await llm_query("hold"); history.push("after-first")',
+      context,
+    )
+    await waitFor(() => runSyncSubcall.mock.calls.length === 1)
+
+    let secondSettled = false
+    const secondExec = backend.execute(
+      'history.push("second"); print(history.join(","))',
+      context,
+    ).then(
+      (value) => {
+        secondSettled = true
+        return value
+      },
+      (error) => {
+        secondSettled = true
+        throw error
+      },
+    )
+
+    await Bun.sleep(0)
+    expect(secondSettled).toBe(false)
+
+    gate.resolve()
+
+    expect(await firstExec).toBe("")
+    expect(await secondExec).toBe("first,after-first,second\n")
+    expect(await backend.execute('print(history.join(","))', context)).toBe("first,after-first,second\n")
   })
 })

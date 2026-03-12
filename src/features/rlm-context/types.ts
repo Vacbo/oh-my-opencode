@@ -30,7 +30,8 @@ export interface RlmSessionState {
   depth: number
   maxDepth: number
   contextDir: string
-  query: string
+  rootQuery: string
+  taskPrompt: string
   shouldDistill: boolean
   parentSessionId?: string
   variables: Map<string, RlmContextVariable>
@@ -39,7 +40,8 @@ export interface RlmSessionState {
 export interface InitRlmSessionOptions {
   maxDepth: number
   contextDir: string
-  query: string
+  rootQuery: string
+  taskPrompt: string
   depth?: number
   parentSessionId?: string
   shouldDistill?: boolean

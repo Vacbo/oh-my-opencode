@@ -29,9 +29,9 @@ const {
 
 describe("error-codes", () => {
   describe("#given RlmErrorCode enum", () => {
-    it("#then has all 23 expected codes", () => {
+    it("#then has all 25 expected codes", () => {
       const codes = Object.keys(RlmErrorCode)
-      expect(codes.length).toBe(23)
+      expect(codes.length).toBe(25)
     })
 
     it("#then SESSION_NOT_FOUND is a valid code", () => {

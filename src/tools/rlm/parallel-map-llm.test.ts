@@ -97,7 +97,7 @@ const baseContext = {
   abort: new AbortController().signal,
 } as Parameters<typeof executeMapLlmOperation>[2]
 
-function createBaseOptions(parallelConfig?: { enabled: boolean; max_concurrent: number; fallback_chain: string[] }): RlmPlanToolOptions {
+function createBaseOptions(parallelConfig?: { enabled: boolean; max_concurrent: number }): RlmPlanToolOptions {
   return {
     client: {} as RlmPlanToolOptions["client"],
     directory: "/tmp",
@@ -175,7 +175,7 @@ describe("executeMapLlmOperation", () => {
         initRlmSession: () => Promise.resolve(baseSession),
         parseFinalAnswer: () => null,
       } as unknown as RlmPlanExecutorDeps
-      const options = createBaseOptions({ enabled: true, max_concurrent: 2, fallback_chain: [] })
+      const options = createBaseOptions({ enabled: true, max_concurrent: 2 })
 
       //#when
       const result = await executeMapLlmOperation(
@@ -207,7 +207,7 @@ describe("executeMapLlmOperation", () => {
         initRlmSession: () => Promise.resolve(baseSession),
         parseFinalAnswer: () => null,
       } as unknown as RlmPlanExecutorDeps
-      const options = createBaseOptions({ enabled: true, max_concurrent: 2, fallback_chain: [] })
+      const options = createBaseOptions({ enabled: true, max_concurrent: 2 })
 
       //#when
       await executeMapLlmOperation(
@@ -249,7 +249,7 @@ describe("executeMapLlmOperation", () => {
         initRlmSession: () => Promise.resolve(baseSession),
         parseFinalAnswer: () => null,
       } as unknown as RlmPlanExecutorDeps
-      const options = createBaseOptions({ enabled: true, max_concurrent: 2, fallback_chain: [] })
+      const options = createBaseOptions({ enabled: true, max_concurrent: 2 })
 
       //#when + #then
       let error: unknown

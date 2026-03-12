@@ -3,9 +3,8 @@ import type { RlmBlobVariable } from "../../features/rlm-context/types"
 import { coordinator } from "../../features/rlm-context/coordinator"
 import { rlmError, toErrorJson, RlmErrorCode } from "../../features/rlm-context/error-codes"
 import { RlmSearchInputSchema } from "./types"
+import type { RlmConfig } from "../../config/schema/experimental"
 
-const DEFAULT_MAX_RESULTS = 20
-const MAX_MAX_RESULTS = 100
 const CONTEXT_RADIUS = 2
 const MAX_EXCERPT_CHARS = 240
 const DEFAULT_REGEX_TIMEOUT_MS = 75
@@ -25,6 +24,7 @@ export interface RlmSearchToolOptions {
   maxRegexLines?: number
   maxRegexLineChars?: number
   now?: () => number
+  config?: Pick<RlmConfig, "search_default_max_results" | "search_max_results">
 }
 
 const toJson = (payload: unknown): string => JSON.stringify(payload)
@@ -79,8 +79,10 @@ function createRegex(inputPattern: string): RegExp | { error: string } {
   }
 }
 
-function toMaxResults(inputMaxResults?: number): number {
-  return Math.min(inputMaxResults ?? DEFAULT_MAX_RESULTS, MAX_MAX_RESULTS)
+function toMaxResults(inputMaxResults: number | undefined, config: RlmSearchToolOptions["config"]): number {
+  const defaultMaxResults = config?.search_default_max_results ?? 20
+  const maxResults = config?.search_max_results ?? 100
+  return Math.min(inputMaxResults ?? defaultMaxResults, maxResults)
 }
 
 export function createRlmSearchTool(
@@ -90,6 +92,7 @@ export function createRlmSearchTool(
   const regexTimeoutMs = options.regexTimeoutMs ?? DEFAULT_REGEX_TIMEOUT_MS
   const maxRegexLines = options.maxRegexLines ?? DEFAULT_MAX_REGEX_LINES
   const maxRegexLineChars = options.maxRegexLineChars ?? DEFAULT_MAX_REGEX_LINE_CHARS
+  const searchConfig = options.config
 
   return tool({
     description: "Search RLM blob variables using literal or regex mode, returning bounded matches with line numbers and nearby context.",
@@ -126,7 +129,7 @@ export function createRlmSearchTool(
 
       const content = await contextManager.readBlobContent(variable as RlmBlobVariable)
       const lines = toLines(content)
-      const maxResults = toMaxResults(parsed.data.max_results)
+      const maxResults = toMaxResults(parsed.data.max_results, searchConfig)
       const matches: SearchMatch[] = []
       let truncated = false
 

@@ -132,6 +132,75 @@ describe("buildRlmSystemPrompt", () => {
     })
   })
 
+  describe("#given strategy guidance section", () => {
+    describe("#then canonical mode includes strategy guidance", () => {
+      it("contains a Strategy Guidance section header", () => {
+        const prompt = getCanonicalPrompt()
+        expect(prompt).toContain("## Strategy Guidance")
+      })
+
+      it("places strategy section after Workflow Example", () => {
+        const prompt = getCanonicalPrompt()
+        const workflowIdx = prompt.indexOf("## Workflow Example")
+        const strategyIdx = prompt.indexOf("## Strategy Guidance")
+        const principlesIdx = prompt.indexOf("## Key Principles")
+        expect(workflowIdx).toBeGreaterThan(-1)
+        expect(strategyIdx).toBeGreaterThan(workflowIdx)
+        expect(principlesIdx).toBeGreaterThan(strategyIdx)
+      })
+
+      it("describes 4 strategies: Peeking, Grepping, Partition+Map, Summarization", () => {
+        const prompt = getCanonicalPrompt()
+        expect(prompt).toContain("Peeking")
+        expect(prompt).toContain("Grepping")
+        expect(prompt).toContain("Partition+Map")
+        expect(prompt).toContain("Summarization")
+      })
+    })
+
+    describe("#then each strategy card has required fields", () => {
+      it("Peeking has trigger, operations, and anti-pattern", () => {
+        const prompt = getCanonicalPrompt()
+        expect(prompt).toMatch(/Peeking[\s\S]*?When to use/i)
+        expect(prompt).toMatch(/Peeking[\s\S]*?head|tail|slice|stats/i)
+        expect(prompt).toMatch(/Peeking[\s\S]*?not/i)
+      })
+
+      it("Grepping has trigger, operations, and anti-pattern", () => {
+        const prompt = getCanonicalPrompt()
+        expect(prompt).toMatch(/Grepping[\s\S]*?When to use/i)
+        expect(prompt).toMatch(/Grepping[\s\S]*?rlm_search/i)
+        expect(prompt).toMatch(/Grepping[\s\S]*?not/i)
+      })
+
+      it("Partition+Map has trigger, operations, and anti-pattern", () => {
+        const prompt = getCanonicalPrompt()
+        expect(prompt).toMatch(/Partition\+Map[\s\S]*?When to use/i)
+        expect(prompt).toMatch(/Partition\+Map[\s\S]*?split[\s\S]*?map/i)
+        expect(prompt).toMatch(/Partition\+Map[\s\S]*?not/i)
+      })
+
+      it("Summarization has trigger, operations, and anti-pattern", () => {
+        const prompt = getCanonicalPrompt()
+        expect(prompt).toMatch(/Summarization[\s\S]*?When to use/i)
+        expect(prompt).toMatch(/Summarization[\s\S]*?reduce_llm|map_llm/i)
+        expect(prompt).toMatch(/Summarization[\s\S]*?not/i)
+      })
+    })
+
+    describe("#then strategy section respects token budget", () => {
+      it("strategy section is under 3200 characters (~800 tokens)", () => {
+        const prompt = getCanonicalPrompt()
+        const strategyStart = prompt.indexOf("## Strategy Guidance")
+        const strategyEnd = prompt.indexOf("## Key Principles")
+        expect(strategyStart).toBeGreaterThan(-1)
+        expect(strategyEnd).toBeGreaterThan(strategyStart)
+        const strategySection = prompt.slice(strategyStart, strategyEnd)
+        expect(strategySection.length).toBeLessThanOrEqual(3200)
+      })
+    })
+  })
+
   describe("#given keyword-alias mode", () => {
     it("returns a lightweight prompt", () => {
       const prompt = buildRlmSystemPrompt({
@@ -141,6 +210,16 @@ describe("buildRlmSystemPrompt", () => {
       expect(prompt).toContain("Lightweight")
       expect(prompt).toContain("context")
       expect(prompt).not.toContain("Execution Environment")
+    })
+
+    it("does NOT include strategy guidance section", () => {
+      const prompt = buildRlmSystemPrompt({
+        ...defaultOptions,
+        mode: "keyword-alias",
+      })
+      expect(prompt).not.toContain("Strategy Guidance")
+      expect(prompt).not.toContain("Peeking")
+      expect(prompt).not.toContain("Partition+Map")
     })
   })
 })

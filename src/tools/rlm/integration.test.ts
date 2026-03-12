@@ -48,6 +48,7 @@ describe("RLM Phase 2 integration", () => {
       createSession(
         rlmSessionId,
         options.query ?? "test query",
+        options.query ?? "test query",
         options.depth ?? 0,
         options.maxDepth ?? 3,
       ),
@@ -59,7 +60,8 @@ describe("RLM Phase 2 integration", () => {
       })
     }
     bindTestCoordinator(sessionId, manager, {
-      query: options.query ?? "test query",
+      rootQuery: options.query ?? "test query",
+      taskPrompt: options.query ?? "test query",
       trusted: options.trusted ?? true,
     })
     boundSessions.push(sessionId)
@@ -234,7 +236,8 @@ describe("RLM Phase 2 integration", () => {
         const replContext = {
           sessionID: "ses-bridge",
           rlmSessionId: testRlmSessionId("ses-bridge"),
-          query: "summarize context",
+          rootQuery: "summarize context",
+          taskPrompt: "summarize context",
           manager,
           toolContext: createToolContext("ses-bridge"),
           client: dummyClient,
@@ -280,7 +283,8 @@ describe("RLM Phase 2 integration", () => {
         const replContext = {
           sessionID: "ses-untrusted",
           rlmSessionId: testRlmSessionId("ses-untrusted"),
-          query: "test",
+          rootQuery: "test",
+          taskPrompt: "test",
           manager,
           toolContext: createToolContext("ses-untrusted"),
           client: dummyClient,
@@ -307,7 +311,8 @@ describe("RLM Phase 2 integration", () => {
         const replContext = {
           sessionID: "ses-notrust-req",
           rlmSessionId: testRlmSessionId("ses-notrust-req"),
-          query: "test",
+          rootQuery: "test",
+          taskPrompt: "test",
           manager,
           toolContext: createToolContext("ses-notrust-req"),
           client: dummyClient,

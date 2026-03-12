@@ -8,6 +8,7 @@ export interface BenchmarkExecutionResult {
   depthReached: number
   passed?: boolean
   details?: Record<string, unknown>
+  accuracy?: number
 }
 
 export interface BenchmarkResult {
@@ -18,6 +19,7 @@ export interface BenchmarkResult {
   depthReached: number
   details?: Record<string, unknown>
   error?: string
+  accuracy?: number
 }
 
 export interface BenchmarkReport {
@@ -25,4 +27,19 @@ export interface BenchmarkReport {
   durationMs: number
   passedCount: number
   failedCount: number
+  averageAccuracy?: number
+}
+
+export interface DatasetItem {
+  id: string
+  query: string
+  context: string
+  expected_answer?: string
+  metadata?: Record<string, unknown>
+}
+
+export interface DatasetLoader {
+  name: string
+  size: number
+  load(): Promise<DatasetItem[]>
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it, beforeEach, afterEach } from "bun:test"
-import { createTracer, type RlmSpan, type SpanTreeNode } from "./tracer"
+import { createTracer } from "./tracer"
 import type { RlmTracingConfig } from "../../config/schema/experimental"
 import * as fs from "node:fs"
 import * as path from "node:path"
@@ -54,6 +54,22 @@ describe("tracer", () => {
       expect(span.status).toBe("ok")
     })
 
+    it("records operation metadata on spans", () => {
+      const config: RlmTracingConfig = { enabled: true, output: "log", spans_dir: testSpansDir }
+      const tracer = createTracer(config)
+
+      const span = tracer.startSpan("chat-1", "rlm-1", "plan.op.write_var", undefined, {
+        operation_name: "write_var",
+        operation_args: { variable_name: "draft", content: "hello" },
+      })
+      tracer.endSpan(span.spanId, "ok", undefined, { variables_created: ["draft"] })
+
+      const [storedSpan] = tracer.getSpans("rlm-1")
+      expect(storedSpan.operation_name).toBe("write_var")
+      expect(storedSpan.operation_args).toEqual({ variable_name: "draft", content: "hello" })
+      expect(storedSpan.variables_created).toEqual(["draft"])
+    })
+
     it("ends span with status and error", () => {
       const config: RlmTracingConfig = { enabled: true, output: "log", spans_dir: testSpansDir }
       const tracer = createTracer(config)
@@ -89,7 +105,7 @@ describe("tracer", () => {
 
       const rootSpan = tracer.startSpan("chat-1", "rlm-1", "plan")
       const childSpan = tracer.startSpan("chat-1", "rlm-1", "map_rlm", rootSpan.spanId)
-      const grandchildSpan = tracer.startSpan("chat-1", "rlm-1", "exec", childSpan.spanId)
+      tracer.startSpan("chat-1", "rlm-1", "exec", childSpan.spanId)
 
       const tree = tracer.getTrace(rootSpan.spanId)
       expect(tree).toBeDefined()
