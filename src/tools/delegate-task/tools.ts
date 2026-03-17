@@ -195,8 +195,11 @@ export function createDelegateTask(
       const runInBackground = args.run_in_background === true;
 
       // Resolve task target using catalog-backed normalization
-      // Only fetch catalog when resolver actually needs it (not for continuations/explicit categories)
-      const needsCatalog = !args.session_id?.trim() && !args.category?.trim();
+      // Only fetch catalog when resolver actually needs it (not for continuations/explicit categories/missing targets)
+      const needsCatalog =
+        !args.session_id?.trim() &&
+        !args.category?.trim() &&
+        !!args.subagent_type?.trim();
       const agentCatalog = needsCatalog
         ? await getTaskAgentCatalog(options.client)
         : null;
