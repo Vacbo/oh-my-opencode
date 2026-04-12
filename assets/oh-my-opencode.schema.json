@@ -5238,7 +5238,23 @@
           "type": "boolean"
         },
         "skills": {
-          "type": "boolean"
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "object",
+              "properties": {
+                "claude": {
+                  "type": "boolean"
+                },
+                "agents": {
+                  "type": "boolean"
+                }
+              },
+              "additionalProperties": false
+            }
+          ]
         },
         "agents": {
           "type": "boolean"
