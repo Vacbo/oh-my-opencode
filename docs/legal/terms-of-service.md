@@ -24,7 +24,7 @@ You must not use the Service to violate law, infringe rights, or interfere with 
 
 ## 3. User Content
 
-You retain ownership of your code, prompts, files, and other content. Except for the limited anonymous telemetry described in the Privacy Policy, the Application is intended to run locally and does not transmit your repository contents to us as part of ordinary use.
+You retain ownership of your code, prompts, files, and other content. Except for any limited anonymous telemetry you explicitly opt into as described in the Privacy Policy, the Application is intended to run locally and does not transmit your repository contents to us as part of ordinary use.
 
 ## 4. Third-Party Services
 
