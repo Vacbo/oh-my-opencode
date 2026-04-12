@@ -1,0 +1,161 @@
+name: Sync Upstream
+
+on:
+  schedule:
+    - cron: "0 */6 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: sync-upstream
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  actions: write
+  issues: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: dev
+          fetch-depth: 0
+
+      - name: Configure git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Add upstream remote
+        run: |
+          git remote remove upstream 2>/dev/null || true
+          git remote add upstream https://github.com/code-yeongyu/oh-my-openagent.git
+
+      - name: Resolve latest upstream tag
+        id: check
+        run: |
+          STORED=$(tr -d '[:space:]' < upstream-version.txt 2>/dev/null || printf '')
+
+          LATEST=$(git ls-remote --tags --refs upstream 'v*' \
+            | awk '{print $2}' \
+            | sed 's|refs/tags/||' \
+            | sort -V \
+            | tail -1)
+
+          printf 'stored=%s\n' "$STORED" >> "$GITHUB_OUTPUT"
+          printf 'latest=%s\n' "$LATEST" >> "$GITHUB_OUTPUT"
+
+          if [ -z "$LATEST" ]; then
+            echo "::warning::Could not resolve any upstream v* tag; skipping"
+            printf 'skip=true\n' >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if [ "$STORED" = "$LATEST" ]; then
+            echo "Upstream unchanged at $LATEST"
+            printf 'skip=true\n' >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "Upstream moved: ${STORED:-<none>} -> $LATEST"
+          printf 'skip=false\n' >> "$GITHUB_OUTPUT"
+
+      - name: Fetch upstream tag commit
+        if: steps.check.outputs.skip == 'false'
+        env:
+          TAG: ${{ steps.check.outputs.latest }}
+        run: |
+          git fetch --no-tags upstream "refs/tags/${TAG}"
+          git rev-parse 'FETCH_HEAD^{commit}' > /tmp/upstream-target-sha
+
+      - name: Rebase dev onto upstream tag
+        if: steps.check.outputs.skip == 'false'
+        id: rebase
+        env:
+          TAG: ${{ steps.check.outputs.latest }}
+        run: |
+          TARGET=$(cat /tmp/upstream-target-sha)
+          HEAD_BEFORE=$(git rev-parse HEAD)
+
+          if ! git rebase "$TARGET"; then
+            git rebase --abort
+            printf 'success=false\n' >> "$GITHUB_OUTPUT"
+            printf 'head_moved=false\n' >> "$GITHUB_OUTPUT"
+            printf 'tracker_updated=false\n' >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          HEAD_AFTER_REBASE=$(git rev-parse HEAD)
+          if [ "$HEAD_BEFORE" = "$HEAD_AFTER_REBASE" ]; then
+            printf 'head_moved=false\n' >> "$GITHUB_OUTPUT"
+            echo "Rebase was a no-op (upstream tag already ancestor of dev)"
+          else
+            printf 'head_moved=true\n' >> "$GITHUB_OUTPUT"
+          fi
+
+          printf '%s\n' "$TAG" > upstream-version.txt
+          git add upstream-version.txt
+          if git diff --cached --quiet; then
+            printf 'tracker_updated=false\n' >> "$GITHUB_OUTPUT"
+            echo "Tracker already at $TAG"
+          else
+            git commit -m "chore(sync): track upstream ${TAG}"
+            printf 'tracker_updated=true\n' >> "$GITHUB_OUTPUT"
+          fi
+
+          printf 'success=true\n' >> "$GITHUB_OUTPUT"
+
+      - name: Open issue on rebase failure
+        if: steps.check.outputs.skip == 'false' && steps.rebase.outputs.success == 'false'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const tag = '${{ steps.check.outputs.latest }}';
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: `Sync failed for upstream ${tag}`,
+              body: [
+                `Automatic rebase of dev onto upstream tag \`${tag}\` failed.`,
+                '',
+                'Manual resolution required:',
+                '```bash',
+                'git checkout dev',
+                'git fetch upstream refs/tags/' + tag,
+                'git rebase FETCH_HEAD',
+                '# resolve conflicts',
+                'printf "' + tag + '\\n" > upstream-version.txt',
+                'git add upstream-version.txt',
+                'git commit -m "chore(sync): track upstream ' + tag + '"',
+                'git push origin dev --force-with-lease',
+                '```',
+              ].join('\n'),
+            });
+
+      - name: Push rebased dev
+        if: |
+          steps.check.outputs.skip == 'false'
+          && steps.rebase.outputs.success == 'true'
+          && (steps.rebase.outputs.head_moved == 'true' || steps.rebase.outputs.tracker_updated == 'true')
+        run: git push origin dev --force-with-lease
+
+      - name: Trigger publish workflow
+        if: |
+          steps.check.outputs.skip == 'false'
+          && steps.rebase.outputs.success == 'true'
+          && steps.rebase.outputs.head_moved == 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.actions.createWorkflowDispatch({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              workflow_id: 'publish.yml',
+              ref: 'dev',
+              inputs: {
+                bump: 'patch',
+                skip_platform: 'false',
+              },
+            });
