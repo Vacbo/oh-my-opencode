@@ -1,5 +1,5 @@
 {
-  "name": "oh-my-opencode",
+  "name": "@vacbo/oh-my-opencode",
   "version": "3.17.0",
   "description": "The Best AI Agent Harness - Batteries-Included OpenCode Plugin with Multi-Model Orchestration, Parallel Background Agents, and Crafted LSP/AST Tools",
   "main": "./dist/index.js",
@@ -43,16 +43,16 @@
     "ai",
     "llm"
   ],
-  "author": "YeonGyu-Kim",
+  "author": "Vacbo",
   "license": "SUL-1.0",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/code-yeongyu/oh-my-openagent.git"
+    "url": "git+https://github.com/Vacbo/oh-my-opencode.git"
   },
   "bugs": {
-    "url": "https://github.com/code-yeongyu/oh-my-openagent/issues"
+    "url": "https://github.com/Vacbo/oh-my-opencode/issues"
   },
-  "homepage": "https://github.com/code-yeongyu/oh-my-openagent#readme",
+  "homepage": "https://github.com/Vacbo/oh-my-opencode#readme",
   "dependencies": {
     "@ast-grep/cli": "^0.41.1",
     "@ast-grep/napi": "^0.41.1",
@@ -79,17 +79,17 @@
     "typescript": "^5.7.3"
   },
   "optionalDependencies": {
-    "oh-my-opencode-darwin-arm64": "3.17.0",
-    "oh-my-opencode-darwin-x64": "3.17.0",
-    "oh-my-opencode-darwin-x64-baseline": "3.17.0",
-    "oh-my-opencode-linux-arm64": "3.17.0",
-    "oh-my-opencode-linux-arm64-musl": "3.17.0",
-    "oh-my-opencode-linux-x64": "3.17.0",
-    "oh-my-opencode-linux-x64-baseline": "3.17.0",
-    "oh-my-opencode-linux-x64-musl": "3.17.0",
-    "oh-my-opencode-linux-x64-musl-baseline": "3.17.0",
-    "oh-my-opencode-windows-x64": "3.17.0",
-    "oh-my-opencode-windows-x64-baseline": "3.17.0"
+    "@vacbo/oh-my-opencode-darwin-arm64": "3.17.0",
+    "@vacbo/oh-my-opencode-darwin-x64": "3.17.0",
+    "@vacbo/oh-my-opencode-darwin-x64-baseline": "3.17.0",
+    "@vacbo/oh-my-opencode-linux-arm64": "3.17.0",
+    "@vacbo/oh-my-opencode-linux-arm64-musl": "3.17.0",
+    "@vacbo/oh-my-opencode-linux-x64": "3.17.0",
+    "@vacbo/oh-my-opencode-linux-x64-baseline": "3.17.0",
+    "@vacbo/oh-my-opencode-linux-x64-musl": "3.17.0",
+    "@vacbo/oh-my-opencode-linux-x64-musl-baseline": "3.17.0",
+    "@vacbo/oh-my-opencode-windows-x64": "3.17.0",
+    "@vacbo/oh-my-opencode-windows-x64-baseline": "3.17.0"
   },
   "overrides": {},
   "trustedDependencies": [

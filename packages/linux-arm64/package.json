@@ -1,11 +1,11 @@
 {
-  "name": "oh-my-opencode-linux-arm64",
+  "name": "@vacbo/oh-my-opencode-linux-arm64",
   "version": "3.17.0",
-  "description": "Platform-specific binary for oh-my-opencode (linux-arm64)",
+  "description": "Platform-specific binary for @vacbo/oh-my-opencode (linux-arm64)",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/code-yeongyu/oh-my-openagent"
+    "url": "https://github.com/Vacbo/oh-my-opencode"
   },
   "os": [
     "linux"
