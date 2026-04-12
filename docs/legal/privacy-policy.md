@@ -14,7 +14,7 @@ We collect limited non-personal information needed to operate and improve the Se
 
 ### Automatically collected information
 
-When anonymous telemetry is enabled, the Application may collect:
+When anonymous telemetry is explicitly enabled, the Application may collect:
 
 - Anonymous usage events, including `run_started`, `run_completed`, `run_failed`, `install_completed`, `install_failed`, `plugin_loaded`, `omo_daily_active`, and `omo_hourly_active`
 - Application metadata such as package version, plugin name, runtime, and command or entry-point context
@@ -29,17 +29,22 @@ The Application stores local configuration and telemetry deduplication state on 
 
 ## 2. How Telemetry Works
 
-The Application uses PostHog for anonymous product analytics. Telemetry is enabled by default, following the same opt-out posture used in cmux, and is intended to help us understand installation success, runtime reliability, and broad usage patterns.
+The Application can use PostHog for anonymous product analytics if you explicitly opt in. Telemetry is disabled by default and is intended to help maintainers understand installation success, runtime reliability, and broad usage patterns when users choose to enable it.
 
-Telemetry can be disabled at any time by setting one of these environment variables before running the CLI or plugin host:
+Telemetry can be enabled only when you set both of these environment variables before running the CLI or plugin host:
 
 ```bash
-export OMO_SEND_ANONYMOUS_TELEMETRY=0
-# or
+export OMO_SEND_ANONYMOUS_TELEMETRY=1
+export POSTHOG_API_KEY=<your project key>
+```
+
+You can force-disable telemetry at any time with:
+
+```bash
 export OMO_DISABLE_POSTHOG=1
 ```
 
-When telemetry is disabled, PostHog events are not sent.
+By default, telemetry is disabled and PostHog events are not sent.
 
 ## 3. Third-Party Services
 
@@ -70,7 +75,7 @@ Anonymous analytics and diagnostics are retained only as long as reasonably nece
 
 You may:
 
-- Disable anonymous telemetry through environment variables
+- Leave anonymous telemetry disabled, or opt in with environment variables when you want it enabled
 - Remove local configuration or cached state files from your machine
 - Stop using the Service at any time
 
