@@ -34,7 +34,7 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - uses: oven-sh/setup-bun@v2
         with:
@@ -51,7 +51,7 @@ jobs:
   typecheck:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - uses: oven-sh/setup-bun@v2
         with:
@@ -73,7 +73,7 @@ jobs:
       version: ${{ steps.publish.outputs.version }}
       dist_tag: ${{ steps.publish.outputs.dist_tag }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0
 
@@ -252,7 +252,7 @@ jobs:
             windows-x64-baseline,
           ]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - uses: oven-sh/setup-bun@v2
         with:
@@ -479,7 +479,7 @@ jobs:
     needs: [publish-main, publish-platform]
     if: always() && needs.publish-main.result == 'success' && (inputs.skip_platform == true || needs.publish-platform.result == 'success')
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0
 
