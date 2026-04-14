@@ -70,8 +70,8 @@ jobs:
     needs: [test, typecheck]
     if: github.repository == 'Vacbo/oh-my-opencode'
     outputs:
-      version: ${{ steps.version.outputs.version }}
-      dist_tag: ${{ steps.version.outputs.dist_tag }}
+      version: ${{ steps.publish.outputs.version }}
+      dist_tag: ${{ steps.publish.outputs.dist_tag }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -131,51 +131,100 @@ jobs:
 
           echo "Version: $VERSION"
 
-      - name: Check if already published
-        id: check
-        env:
-          VERSION: ${{ steps.version.outputs.version }}
-        run: |
-          if npm view "@vacbo/oh-my-opencode@${VERSION}" version --registry https://registry.npmjs.org >/dev/null 2>&1; then
-            echo "skip=true" >> $GITHUB_OUTPUT
-            echo "✓ @vacbo/oh-my-opencode@${VERSION} already published"
-          else
-            echo "skip=false" >> $GITHUB_OUTPUT
-          fi
-
-      - name: Update version
-        if: steps.check.outputs.skip != 'true'
-        env:
-          VERSION: ${{ steps.version.outputs.version }}
-        run: |
-          jq --arg v "$VERSION" '.version = $v' package.json > tmp.json && mv tmp.json package.json
-
-          for platform in darwin-arm64 darwin-x64 darwin-x64-baseline linux-x64 linux-x64-baseline linux-arm64 linux-x64-musl linux-x64-musl-baseline linux-arm64-musl windows-x64 windows-x64-baseline; do
-            jq --arg v "$VERSION" '.version = $v' "packages/${platform}/package.json" > tmp.json
-            mv tmp.json "packages/${platform}/package.json"
-          done
-
-          jq --arg v "$VERSION" '.optionalDependencies = (.optionalDependencies | to_entries | map(.value = $v) | from_entries)' package.json > tmp.json && mv tmp.json package.json
-
-      - name: Build main package
-        if: steps.check.outputs.skip != 'true'
-        run: |
-          bun build src/index.ts --outdir dist --target bun --format esm --external @ast-grep/napi
-          bun build src/cli/index.ts --outdir dist/cli --target bun --format esm --external @ast-grep/napi
-          bunx tsc --emitDeclarationOnly
-          bun run build:schema
-
       - name: Publish @vacbo/oh-my-opencode
-        if: steps.check.outputs.skip != 'true'
+        id: publish
         env:
+          RAW_VERSION: ${{ inputs.version }}
+          INITIAL_VERSION: ${{ steps.version.outputs.version }}
           DIST_TAG: ${{ steps.version.outputs.dist_tag }}
           NPM_CONFIG_PROVENANCE: true
         run: |
-          if [ -n "$DIST_TAG" ]; then
-            npm publish --access public --provenance --tag "$DIST_TAG"
-          else
-            npm publish --access public --provenance
-          fi
+          set -uo pipefail
+
+          version_exists() {
+            local version="$1"
+            npm view "@vacbo/oh-my-opencode@${version}" version --registry https://registry.npmjs.org >/dev/null 2>&1
+          }
+
+          next_patch_version() {
+            local version="$1"
+            local base="${version%%-*}"
+            local suffix=""
+
+            if [[ "$version" == *"-"* ]]; then
+              suffix="-${version#*-}"
+            fi
+
+            IFS='.' read -r major minor patch <<< "$base"
+            echo "${major}.${minor}.$((patch + 1))${suffix}"
+          }
+
+          apply_version() {
+            local version="$1"
+
+            jq --arg v "$version" '.version = $v' package.json > tmp.json && mv tmp.json package.json
+
+            for platform in darwin-arm64 darwin-x64 darwin-x64-baseline linux-x64 linux-x64-baseline linux-arm64 linux-x64-musl linux-x64-musl-baseline linux-arm64-musl windows-x64 windows-x64-baseline; do
+              jq --arg v "$version" '.version = $v' "packages/${platform}/package.json" > tmp.json
+              mv tmp.json "packages/${platform}/package.json"
+            done
+
+            jq --arg v "$version" '.optionalDependencies = (.optionalDependencies | to_entries | map(.value = $v) | from_entries)' package.json > tmp.json && mv tmp.json package.json
+          }
+
+          build_main_package() {
+            bun build src/index.ts --outdir dist --target bun --format esm --external @ast-grep/napi
+            bun build src/cli/index.ts --outdir dist/cli --target bun --format esm --external @ast-grep/napi
+            bunx tsc --emitDeclarationOnly
+            bun run build:schema
+          }
+
+          publish_main_package() {
+            if [ -n "$DIST_TAG" ]; then
+              npm publish --access public --provenance --tag "$DIST_TAG" >publish.log 2>&1
+            else
+              npm publish --access public --provenance >publish.log 2>&1
+            fi
+          }
+
+          VERSION="$INITIAL_VERSION"
+
+          while true; do
+            if version_exists "$VERSION"; then
+              if [ -n "$RAW_VERSION" ]; then
+                echo "::error::@vacbo/oh-my-opencode@${VERSION} is already published"
+                exit 1
+              fi
+
+              echo "@vacbo/oh-my-opencode@${VERSION} is already visible on npm. Trying next patch version."
+              VERSION="$(next_patch_version "$VERSION")"
+              continue
+            fi
+
+            apply_version "$VERSION"
+            build_main_package
+
+            if publish_main_package; then
+              cat publish.log
+              echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+              echo "dist_tag=$DIST_TAG" >> "$GITHUB_OUTPUT"
+              break
+            fi
+
+            cat publish.log
+
+            if [ -n "$RAW_VERSION" ]; then
+              exit 1
+            fi
+
+            if grep -q 'Cannot publish over previously published version' publish.log; then
+              VERSION="$(next_patch_version "$VERSION")"
+              echo "Immutable npm version collision detected. Retrying with ${VERSION}."
+              continue
+            fi
+
+            exit 1
+          done
 
   build-platform:
     needs: publish-main
