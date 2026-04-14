@@ -105,7 +105,8 @@ export async function runTuiInstaller(
     !config.hasOpenAI &&
     !config.hasGemini &&
     !config.hasCopilot &&
-    !config.hasOpencodeZen
+    !config.hasOpencodeZen &&
+    !config.hasVercelAiGateway
   ) {
     p.log.warn(
       "No model providers configured. Using opencode/big-pickle as fallback.",

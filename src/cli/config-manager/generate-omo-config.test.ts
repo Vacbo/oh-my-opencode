@@ -18,6 +18,7 @@ describe("generateOmoConfig - model fallback system", () => {
       hasZaiCodingPlan: false,
       hasKimiForCoding: false,
       hasOpencodeGo: false,
+      hasVercelAiGateway: false,
     };
 
     //#when
@@ -44,6 +45,7 @@ describe("generateOmoConfig - model fallback system", () => {
       hasZaiCodingPlan: false,
       hasKimiForCoding: false,
       hasOpencodeGo: false,
+      hasVercelAiGateway: false,
     };
 
     //#when
@@ -70,6 +72,7 @@ describe("generateOmoConfig - model fallback system", () => {
       hasZaiCodingPlan: true,
       hasKimiForCoding: false,
       hasOpencodeGo: false,
+      hasVercelAiGateway: false,
     };
 
     //#when
@@ -96,6 +99,7 @@ describe("generateOmoConfig - model fallback system", () => {
       hasZaiCodingPlan: false,
       hasKimiForCoding: false,
       hasOpencodeGo: false,
+      hasVercelAiGateway: false,
     };
 
     //#when
@@ -131,6 +135,7 @@ describe("generateOmoConfig - model fallback system", () => {
       hasZaiCodingPlan: false,
       hasKimiForCoding: false,
       hasOpencodeGo: false,
+      hasVercelAiGateway: false,
     };
 
     //#when
@@ -181,6 +186,7 @@ describe("generateOmoConfig - model fallback system", () => {
       hasZaiCodingPlan: false,
       hasKimiForCoding: false,
       hasOpencodeGo: false,
+      hasVercelAiGateway: false,
     };
 
     //#when
@@ -204,6 +210,7 @@ describe("generateOmoConfig - model fallback system", () => {
       hasZaiCodingPlan: false,
       hasKimiForCoding: false,
       hasOpencodeGo: false,
+      hasVercelAiGateway: false,
     };
 
     //#when
