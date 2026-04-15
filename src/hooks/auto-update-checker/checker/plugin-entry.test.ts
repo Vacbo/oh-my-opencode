@@ -48,8 +48,11 @@ describe("findPluginEntry", () => {
     originalConfigDir = process.env.OPENCODE_CONFIG_DIR
     temporaryDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "omo-plugin-entry-test-"))
     const opencodeDirectory = path.join(temporaryDirectory, ".opencode")
+    const isolatedUserConfigDir = path.join(temporaryDirectory, "user-config")
     fs.mkdirSync(opencodeDirectory, { recursive: true })
+    fs.mkdirSync(isolatedUserConfigDir, { recursive: true })
     configPath = path.join(opencodeDirectory, "opencode.json")
+    process.env.OPENCODE_CONFIG_DIR = isolatedUserConfigDir
   })
 
   afterEach(() => {

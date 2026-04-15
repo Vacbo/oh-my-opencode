@@ -1,10 +1,30 @@
 /// <reference types="bun-types" />
 
-import { describe, expect, it, mock } from "bun:test"
+import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test"
 
 import { OhMyOpenCodeConfigSchema } from "../config"
 
 const { createPreemptiveCompactionHook } = await import("./preemptive-compaction")
+
+const ANTHROPIC_CONTEXT_ENV_KEY = "ANTHROPIC_1M_CONTEXT"
+const VERTEX_CONTEXT_ENV_KEY = "VERTEX_ANTHROPIC_1M_CONTEXT"
+
+const originalAnthropicContextEnv = process.env[ANTHROPIC_CONTEXT_ENV_KEY]
+const originalVertexContextEnv = process.env[VERTEX_CONTEXT_ENV_KEY]
+
+function resetContextLimitEnv(): void {
+  if (originalAnthropicContextEnv === undefined) {
+    delete process.env[ANTHROPIC_CONTEXT_ENV_KEY]
+  } else {
+    process.env[ANTHROPIC_CONTEXT_ENV_KEY] = originalAnthropicContextEnv
+  }
+
+  if (originalVertexContextEnv === undefined) {
+    delete process.env[VERTEX_CONTEXT_ENV_KEY]
+  } else {
+    process.env[VERTEX_CONTEXT_ENV_KEY] = originalVertexContextEnv
+  }
+}
 
 type HookContext = Parameters<typeof createPreemptiveCompactionHook>[0]
 
@@ -24,6 +44,15 @@ function createMockContext(): HookContext {
 }
 
 describe("preemptive-compaction aws-bedrock-anthropic", () => {
+  beforeEach(() => {
+    delete process.env[ANTHROPIC_CONTEXT_ENV_KEY]
+    delete process.env[VERTEX_CONTEXT_ENV_KEY]
+  })
+
+  afterEach(() => {
+    resetContextLimitEnv()
+  })
+
   it("triggers compaction for aws-bedrock-anthropic provider when usage exceeds threshold", async () => {
     // given
     const ctx = createMockContext()

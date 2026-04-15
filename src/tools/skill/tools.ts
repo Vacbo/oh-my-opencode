@@ -28,19 +28,17 @@ export function createSkillTool(options: SkillLoadOptions = {}): ToolDefinition 
   let cachedDescription: string | null = null
 
   const getSkills = async (): Promise<LoadedSkill[]> => {
-    clearSkillCache()
-    const discovered = await getAllSkills({
-      disabledSkills: options?.disabledSkills,
-      browserProvider: options?.browserProvider,
-    })
-    const allSkills = !options.skills
-      ? discovered
-      : [
-          ...discovered,
-          ...options.skills.filter(
-            (skill) => !new Set(discovered.map((discoveredSkill) => discoveredSkill.name)).has(skill.name)
-          ),
-        ]
+    const discovered = options.skills
+      ? []
+      : await (async () => {
+          clearSkillCache()
+          return getAllSkills({
+            disabledSkills: options?.disabledSkills,
+            browserProvider: options?.browserProvider,
+          })
+        })()
+
+    const allSkills = options.skills ? [...options.skills] : discovered
 
     if (options.nativeSkills) {
       try {

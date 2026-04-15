@@ -1,13 +1,42 @@
 /// <reference types="bun-types" />
 
-import { describe, expect, it } from "bun:test"
+import { afterEach, beforeEach, describe, expect, it } from "bun:test"
 import { createContextWindowMonitorHook } from "./context-window-monitor"
+
+const ANTHROPIC_CONTEXT_ENV_KEY = "ANTHROPIC_1M_CONTEXT"
+const VERTEX_CONTEXT_ENV_KEY = "VERTEX_ANTHROPIC_1M_CONTEXT"
+
+const originalAnthropicContextEnv = process.env[ANTHROPIC_CONTEXT_ENV_KEY]
+const originalVertexContextEnv = process.env[VERTEX_CONTEXT_ENV_KEY]
+
+function resetContextLimitEnv(): void {
+  if (originalAnthropicContextEnv === undefined) {
+    delete process.env[ANTHROPIC_CONTEXT_ENV_KEY]
+  } else {
+    process.env[ANTHROPIC_CONTEXT_ENV_KEY] = originalAnthropicContextEnv
+  }
+
+  if (originalVertexContextEnv === undefined) {
+    delete process.env[VERTEX_CONTEXT_ENV_KEY]
+  } else {
+    process.env[VERTEX_CONTEXT_ENV_KEY] = originalVertexContextEnv
+  }
+}
 
 function createOutput() {
   return { title: "", output: "original", metadata: null }
 }
 
 describe("context-window-monitor modelContextLimitsCache", () => {
+  beforeEach(() => {
+    delete process.env[ANTHROPIC_CONTEXT_ENV_KEY]
+    delete process.env[VERTEX_CONTEXT_ENV_KEY]
+  })
+
+  afterEach(() => {
+    resetContextLimitEnv()
+  })
+
   it("does not append reminder below cached non-anthropic threshold", async () => {
     // given
     const modelContextLimitsCache = new Map<string, number>()
