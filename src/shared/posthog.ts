@@ -174,7 +174,7 @@ export function getPostHogDistinctId(): string {
 
 export function createCliPostHog(): PostHogClient {
   return createPostHogClient("cli", {
-    enableExceptionAutocapture: true,
+    enableExceptionAutocapture: false,
     flushAt: 1,
     flushInterval: 0,
   });
@@ -182,7 +182,7 @@ export function createCliPostHog(): PostHogClient {
 
 export function createPluginPostHog(): PostHogClient {
   return createPostHogClient("plugin", {
-    enableExceptionAutocapture: true,
+    enableExceptionAutocapture: false,
     flushAt: 1,
     flushInterval: 0,
   });

@@ -17,6 +17,10 @@ import {
 import {
   loadProjectAgents,
   loadUserAgents,
+  loadOpencodeGlobalAgents,
+  loadOpencodeProjectAgents,
+  loadAgentDefinitions,
+  readOpencodeConfigAgents,
 } from "../features/claude-code-agent-loader";
 import type { PluginComponents } from "./plugin-components-loader";
 import { reorderAgentsByPriority } from "./agent-priority-order";
@@ -39,7 +43,6 @@ function getConfiguredDefaultAgent(
 ): string | undefined {
   const defaultAgent = config.default_agent;
   if (typeof defaultAgent !== "string") return undefined;
-
   const trimmedDefaultAgent = defaultAgent.trim();
   return trimmedDefaultAgent.length > 0 ? trimmedDefaultAgent : undefined;
 }
@@ -116,7 +119,14 @@ export async function applyAgentConfig(params: {
   const projectAgents = includeClaudeAgents
     ? loadProjectAgents(params.ctx.directory)
     : {};
+  const opencodeGlobalAgents = loadOpencodeGlobalAgents();
+  const opencodeProjectAgents = loadOpencodeProjectAgents(params.ctx.directory);
   const rawPluginAgents = params.pluginComponents.agents;
+
+  const agentDefinitionAgents = params.pluginConfig.agent_definitions
+    ? loadAgentDefinitions(params.pluginConfig.agent_definitions, "definition-file")
+    : {};
+  const opencodeConfigAgents = readOpencodeConfigAgents(params.ctx.directory);
 
   const pluginAgents = Object.fromEntries(
     Object.entries(rawPluginAgents).map(([key, value]) => {
@@ -133,9 +143,11 @@ export async function applyAgentConfig(params: {
     ...Object.entries(configAgent ?? {}),
     ...Object.entries(userAgents),
     ...Object.entries(projectAgents),
-    ...Object.entries(pluginAgents).filter(
-      ([, config]) => config !== undefined,
-    ),
+    ...Object.entries(opencodeGlobalAgents),
+    ...Object.entries(opencodeProjectAgents),
+    ...Object.entries(pluginAgents).filter(([, config]) => config !== undefined),
+    ...Object.entries(agentDefinitionAgents),
+    ...Object.entries(opencodeConfigAgents),
   ]
     .filter(([, config]) => config != null)
     .map(([name, config]) => ({
@@ -145,6 +157,20 @@ export async function applyAgentConfig(params: {
           ? ((config as Record<string, unknown>).description as string)
           : "",
     }));
+
+  log(
+    "[agent-config-handler] Agent sources loaded",
+    {
+      user: Object.keys(userAgents).length,
+      project: Object.keys(projectAgents).length,
+      opencodeGlobal: Object.keys(opencodeGlobalAgents).length,
+      opencodeProject: Object.keys(opencodeProjectAgents).length,
+      plugin: Object.keys(pluginAgents).length,
+      agentDefinitions: Object.keys(agentDefinitionAgents).length,
+      opencodeConfig: Object.keys(opencodeConfigAgents).length,
+      config: Object.keys(configAgent ?? {}).length,
+    }
+  );
 
   const builtinAgents = await createBuiltinAgents(
     migratedDisabledAgents,
@@ -290,6 +316,22 @@ export async function applyAgentConfig(params: {
       pluginAgents,
       protectedBuiltinAgentNames,
     );
+    const filteredOpencodeGlobalAgents = filterProtectedAgentOverrides(
+      opencodeGlobalAgents,
+      protectedBuiltinAgentNames,
+    );
+    const filteredOpencodeProjectAgents = filterProtectedAgentOverrides(
+      opencodeProjectAgents,
+      protectedBuiltinAgentNames,
+    );
+    const filteredAgentDefinitionAgents = filterProtectedAgentOverrides(
+      agentDefinitionAgents,
+      protectedBuiltinAgentNames,
+    );
+    const filteredOpencodeConfigAgents = filterProtectedAgentOverrides(
+      opencodeConfigAgents,
+      protectedBuiltinAgentNames,
+    );
 
     params.config.agent = {
       ...agentConfig,
@@ -299,9 +341,14 @@ export async function applyAgentConfig(params: {
             key !== "sisyphus" && key !== "hephaestus" && key !== "atlas",
         ),
       ),
-      ...filterDisabledAgents(filteredUserAgents),
-      ...filterDisabledAgents(filteredProjectAgents),
+      // Precedence: later entries override earlier (project > global > user > plugin)
       ...filterDisabledAgents(filteredPluginAgents),
+      ...filterDisabledAgents(filteredUserAgents),
+      ...filterDisabledAgents(filteredOpencodeGlobalAgents),
+      ...filterDisabledAgents(filteredProjectAgents),
+      ...filterDisabledAgents(filteredOpencodeProjectAgents),
+      ...filterDisabledAgents(filteredAgentDefinitionAgents),
+      ...filterDisabledAgents(filteredOpencodeConfigAgents),
       ...filteredConfigAgents,
       build: { ...migratedBuild, mode: "subagent", hidden: true },
       ...(planDemoteConfig ? { plan: planDemoteConfig } : {}),
@@ -322,6 +369,22 @@ export async function applyAgentConfig(params: {
       pluginAgents,
       protectedBuiltinAgentNames,
     );
+    const filteredOpencodeGlobalAgents = filterProtectedAgentOverrides(
+      opencodeGlobalAgents,
+      protectedBuiltinAgentNames,
+    );
+    const filteredOpencodeProjectAgents = filterProtectedAgentOverrides(
+      opencodeProjectAgents,
+      protectedBuiltinAgentNames,
+    );
+    const filteredAgentDefinitionAgents = filterProtectedAgentOverrides(
+      agentDefinitionAgents,
+      protectedBuiltinAgentNames,
+    );
+    const filteredOpencodeConfigAgents = filterProtectedAgentOverrides(
+      opencodeConfigAgents,
+      protectedBuiltinAgentNames,
+    );
 
     const defaultedConfigAgents = configAgent
       ? Object.fromEntries(
@@ -338,9 +401,14 @@ export async function applyAgentConfig(params: {
 
     params.config.agent = {
       ...builtinAgents,
-      ...filterDisabledAgents(filteredUserAgents),
-      ...filterDisabledAgents(filteredProjectAgents),
+      // Precedence: later entries override earlier (project > global > user > plugin)
       ...filterDisabledAgents(filteredPluginAgents),
+      ...filterDisabledAgents(filteredUserAgents),
+      ...filterDisabledAgents(filteredOpencodeGlobalAgents),
+      ...filterDisabledAgents(filteredProjectAgents),
+      ...filterDisabledAgents(filteredOpencodeProjectAgents),
+      ...filterDisabledAgents(filteredAgentDefinitionAgents),
+      ...filterDisabledAgents(filteredOpencodeConfigAgents),
       ...defaultedConfigAgents,
     };
   }
