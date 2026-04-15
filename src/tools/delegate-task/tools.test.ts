@@ -1454,8 +1454,8 @@ describe("sisyphus-task", () => {
         // execution may fail due to incomplete mocks — we only care about the title
       }
 
-      // then — description auto-generated from first 4 words of prompt
-      expect(capturedTitle).toBe("Fix the broken unit")
+      // then — description auto-generated from first 4 words of prompt and labeled for UI
+      expect(capturedTitle).toBe("quick - Fix the broken unit")
     })
 
     test("#given empty description #when executing #then auto-generates description from prompt", async () => {
@@ -1498,7 +1498,7 @@ describe("sisyphus-task", () => {
       }
 
       // then
-      expect(capturedTitle).toBe("Refactor authentication module completely")
+      expect(capturedTitle).toBe("quick - Refactor authentication module completely")
     })
 
     test("#given explicit description #when executing #then preserves provided description", async () => {
@@ -1540,8 +1540,8 @@ describe("sisyphus-task", () => {
         // execution may fail due to incomplete mocks
       }
 
-      // then — explicit description preserved
-      expect(capturedTitle).toBe("My custom task name")
+      // then — explicit description preserved with UI label
+      expect(capturedTitle).toBe("quick - My custom task name")
     })
 
     test("#given explicit run_in_background=false #when executing #then sync execution succeeds", async () => {

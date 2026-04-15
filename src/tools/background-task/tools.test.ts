@@ -6,6 +6,7 @@ import type { BackgroundManager, BackgroundTask } from "../../features/backgroun
 import type { ToolContext } from "@opencode-ai/plugin/tool"
 import type { BackgroundCancelClient, BackgroundOutputManager, BackgroundOutputClient } from "./tools"
 import { consumeToolMetadata, clearPendingStore } from "../../features/tool-metadata-store"
+import { getAgentListDisplayName } from "../../shared/agent-display-names"
 
 const projectDir = "/Users/yeongyu/local-workspaces/oh-my-opencode"
 
@@ -104,6 +105,50 @@ describe("background_output full_session", () => {
     // #then
     const restored = consumeToolMetadata("test-session", "call-1")
     expect(restored?.title).toBe("quick - Fix flaky test")
+  })
+
+  test("normalizes zero-width prefixed agent names in metadata title", async () => {
+    // #given
+    clearPendingStore()
+
+    const task = createTask({
+      id: "task-1",
+      agent: getAgentListDisplayName("sisyphus"),
+      description: "Ship the release",
+      status: "running",
+    })
+    const manager = createMockManager(task)
+    const client = createMockClient({})
+    const tool = createBackgroundOutput(manager, client)
+    const ctxWithCallId = {
+      ...mockContext,
+      callID: "call-zwsp-title",
+    } as unknown as ToolContext
+
+    // #when
+    await tool.execute({ task_id: "task-1" }, ctxWithCallId)
+
+    // #then
+    const restored = consumeToolMetadata("test-session", "call-zwsp-title")
+    expect(restored?.title).toBe("Sisyphus - Ultraworker - Ship the release")
+  })
+
+  test("normalizes zero-width prefixed agent names in status output", async () => {
+    // #given
+    const task = createTask({
+      agent: getAgentListDisplayName("sisyphus"),
+      status: "running",
+    })
+    const manager = createMockManager(task)
+    const client = createMockClient({})
+    const tool = createBackgroundOutput(manager, client)
+
+    // #when
+    const output = await tool.execute({ task_id: "task-1" }, mockContext)
+
+    // #then
+    expect(output).toContain("| Agent | Sisyphus - Ultraworker |")
+    expect(output).not.toContain(`| Agent | ${getAgentListDisplayName("sisyphus")} |`)
   })
 
   test("includes thinking and tool results when enabled", async () => {

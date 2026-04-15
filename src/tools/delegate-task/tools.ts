@@ -20,6 +20,7 @@ import {
   executeBackgroundTask,
   executeSyncTask,
 } from "./executor"
+import { formatDelegatedTaskTitle } from "../../shared/delegated-task-title"
 
 export { resolveCategoryConfig } from "./categories"
 export type { SyncSessionCreatedEvent, DelegateTaskToolOptions, BuildSystemContentInput } from "./types"
@@ -124,7 +125,11 @@ export function createDelegateTask(options: DelegateTaskToolOptions): ToolDefini
         args.description = words.slice(0, 4).join(" ") || "Delegated task"
       }
       await ctx.metadata?.({
-        title: args.description,
+        title: formatDelegatedTaskTitle({
+          agentName: args.subagent_type,
+          category: args.category,
+          description: args.description,
+        }),
       })
       if (args.run_in_background === undefined) {
         throw new Error(`Invalid arguments: 'run_in_background' parameter is REQUIRED. Specify run_in_background=false for task delegation, or run_in_background=true for parallel exploration.`)

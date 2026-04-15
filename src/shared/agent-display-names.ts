@@ -33,7 +33,7 @@ const AGENT_LIST_SORT_PREFIXES: Record<string, string> = {
   atlas: "\u200B\u200B\u200B\u200B",
 }
 
-const INVISIBLE_AGENT_CHARACTERS_REGEX = /[\u200B\u200C\u200D\uFEFF]/g
+const INVISIBLE_AGENT_CHARACTERS_REGEX = /[\u200B\u200C\u200D]|\uFEFF/g
 
 export function stripInvisibleAgentCharacters(agentName: string): string {
   return agentName.replace(INVISIBLE_AGENT_CHARACTERS_REGEX, "")
@@ -135,6 +135,10 @@ export function normalizeAgentForPrompt(agentName: string | undefined): string |
   }
 
   return trimmed
+}
+
+export function normalizeAgentForUi(agentName: string | undefined): string | undefined {
+  return normalizeAgentForPrompt(agentName)
 }
 
 export function normalizeAgentForPromptKey(agentName: string | undefined): string | undefined {

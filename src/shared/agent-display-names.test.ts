@@ -1,5 +1,5 @@
 import { describe, it, expect } from "bun:test"
-import { AGENT_DISPLAY_NAMES, getAgentConfigKey, getAgentDisplayName, getAgentListDisplayName, normalizeAgentForPrompt, normalizeAgentForPromptKey } from "./agent-display-names"
+import { AGENT_DISPLAY_NAMES, getAgentConfigKey, getAgentDisplayName, getAgentListDisplayName, normalizeAgentForPrompt, normalizeAgentForPromptKey, normalizeAgentForUi } from "./agent-display-names"
 
 describe("getAgentDisplayName", () => {
   it("returns display name for lowercase config key (new format)", () => {
@@ -234,6 +234,17 @@ describe("normalizeAgentForPromptKey", () => {
 
   it("preserves custom agents", () => {
     expect(normalizeAgentForPromptKey("MyCustomAgent")).toBe("MyCustomAgent")
+  })
+})
+
+describe("normalizeAgentForUi", () => {
+  it("returns canonical display names for prefixed core agents", () => {
+    expect(normalizeAgentForUi(getAgentListDisplayName("sisyphus"))).toBe("Sisyphus - Ultraworker")
+    expect(normalizeAgentForUi(getAgentListDisplayName("atlas"))).toBe("Atlas - Plan Executor")
+  })
+
+  it("preserves custom agent names while stripping invisible characters", () => {
+    expect(normalizeAgentForUi("\u200BCustomAgent")).toBe("CustomAgent")
   })
 })
 

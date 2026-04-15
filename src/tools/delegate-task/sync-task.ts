@@ -12,6 +12,7 @@ import { formatDetailedError } from "./error-formatting"
 import { syncTaskDeps, type SyncTaskDeps } from "./sync-task-deps"
 import { setSessionFallbackChain, clearSessionFallbackChain } from "../../hooks/model-fallback/hook"
 import { retrySyncPromptWithFallbacks } from "./sync-task-fallback"
+import { formatDelegatedTaskTitle } from "../../shared/delegated-task-title"
 
 export async function executeSyncTask(
   args: DelegateTaskArgs,
@@ -115,7 +116,11 @@ export async function executeSyncTask(
     }
 
     const syncTaskMeta = {
-      title: args.description,
+      title: formatDelegatedTaskTitle({
+        agentName: agentToUse,
+        category: args.category,
+        description: args.description,
+      }),
       metadata: {
         prompt: args.prompt,
         agent: agentToUse,

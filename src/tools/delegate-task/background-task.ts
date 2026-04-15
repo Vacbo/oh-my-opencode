@@ -10,7 +10,8 @@ import { getSessionTools } from "../../shared/session-tools-store"
 import { SessionCategoryRegistry } from "../../shared/session-category-registry"
 import { QUESTION_DENIED_SESSION_PERMISSION } from "../../shared/question-denied-session-permission"
 import { setSessionFallbackChain } from "../../hooks/model-fallback/hook"
-import { stripAgentListSortPrefix } from "../../shared/agent-display-names"
+import { normalizeAgentForUi, stripAgentListSortPrefix } from "../../shared/agent-display-names"
+import { formatDelegatedTaskTitle } from "../../shared/delegated-task-title"
 
 function continueSessionSetup(args: {
   taskID: string
@@ -131,7 +132,11 @@ export async function executeBackgroundTask(
     }
 
     const unstableMeta = {
-      title: args.description,
+      title: formatDelegatedTaskTitle({
+        agentName: task.agent,
+        category: args.category,
+        description: args.description,
+      }),
       metadata,
     }
     await ctx.metadata?.(unstableMeta)
@@ -148,7 +153,7 @@ export async function executeBackgroundTask(
 
 Background Task ID: ${task.id}
 Description: ${task.description}
-Agent: ${task.agent}${args.category ? ` (category: ${args.category})` : ""}
+Agent: ${(normalizeAgentForUi(task.agent) ?? task.agent)}${args.category ? ` (category: ${args.category})` : ""}
 Status: ${task.status}
 
 System notifies on completion. Use \`background_output\` with task_id="${task.id}" to check.

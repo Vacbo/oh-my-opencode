@@ -1,6 +1,7 @@
 declare const require: (name: string) => any
 const { describe, test, expect, beforeEach, afterEach, mock } = require("bun:test")
 import type { ConcurrencyManager } from "../background-agent/concurrency"
+import { getAgentListDisplayName } from "../../shared/agent-display-names"
 
 type TaskToastManagerClass = typeof import("./manager").TaskToastManager
 
@@ -151,6 +152,25 @@ describe("TaskToastManager", () => {
       const call = mockClient.tui.showToast.mock.calls[0][0]
       expect(call.body.message).toContain("frontend-ui-ux")
       expect(call.body.message).toContain("Running (1):")
+    })
+  })
+
+  describe("agent display normalization", () => {
+    test("strips invisible ordering prefixes from displayed task identifiers", () => {
+      // given - a task using the runtime-prefixed core agent name
+      toastManager.addTask({
+        id: "task_prefixed",
+        description: "Prefixed agent task",
+        agent: getAgentListDisplayName("sisyphus"),
+        isBackground: true,
+      })
+
+      // when
+      const call = mockClient.tui.showToast.mock.calls[0][0]
+
+      // then
+      expect(call.body.message).toContain("Sisyphus - Ultraworker")
+      expect(call.body.message).not.toContain(getAgentListDisplayName("sisyphus"))
     })
   })
 
@@ -332,9 +352,9 @@ describe("TaskToastManager", () => {
       // when - addTask is called
       toastManager.addTask(task)
 
-      // then - should use old format with agent name
+      // then - should use normalized agent/category format
       const call = mockClient.tui.showToast.mock.calls[0][0]
-      expect(call.body.message).toContain("sisyphus-junior/quick")
+      expect(call.body.message).toContain("Sisyphus-Junior/quick")
     })
 
     test("should show model name without category when category is absent", () => {

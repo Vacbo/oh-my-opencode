@@ -11,6 +11,7 @@ import { formatTaskStatus } from "./task-status-format"
 
 import { getAgentDisplayName } from "../../shared/agent-display-names"
 import { recordBackgroundOutputConsumption } from "../../shared/background-output-consumption"
+import { formatDelegatedTaskTitle } from "../../shared/delegated-task-title"
 
 const SISYPHUS_JUNIOR_AGENT = getAgentDisplayName("sisyphus-junior")
 
@@ -31,8 +32,11 @@ function resolveToolCallID(ctx: ToolContextWithMetadata): string | undefined {
 }
 
 function formatResolvedTitle(task: BackgroundTask): string {
-  const label = task.agent === SISYPHUS_JUNIOR_AGENT && task.category ? task.category : task.agent
-  return `${label} - ${task.description}`
+  return formatDelegatedTaskTitle({
+    agentName: task.agent,
+    category: task.agent === SISYPHUS_JUNIOR_AGENT ? task.category : undefined,
+    description: task.description,
+  })
 }
 
 function isTaskActiveStatus(status: BackgroundTask["status"]): boolean {

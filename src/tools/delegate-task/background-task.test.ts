@@ -111,6 +111,48 @@ describeFn("executeBackgroundTask output/session metadata compatibility", () => 
     expectFn(metadataCalls[0].metadata.sessionId).toBe("ses_sub_123")
   })
 
+  testFn("uses informative metadata title for category tasks", async () => {
+    //#given - category tasks should expose the UI label, not just the raw description
+    const metadataCalls: any[] = []
+    const manager = {
+      launch: async () => ({
+        id: "bg_ui_title",
+        sessionID: "ses_sub_456",
+        description: "Fix flaky test",
+        agent: "Sisyphus-Junior",
+        status: "running",
+      }),
+      getTask: () => ({ sessionID: "ses_sub_456" }),
+    }
+
+    //#when
+    await executeBackgroundTask(
+      {
+        description: "Fix flaky test",
+        prompt: "check",
+        run_in_background: true,
+        load_skills: [],
+        category: "quick",
+      },
+      {
+        sessionID: "ses_parent",
+        callID: "call_ui_title",
+        metadata: async (value: any) => metadataCalls.push(value),
+        abort: new AbortController().signal,
+      },
+      { manager },
+      { sessionID: "ses_parent", messageID: "msg_ui_title" },
+      "Sisyphus-Junior",
+      undefined,
+      undefined,
+      undefined,
+    )
+
+    //#then
+    expectFn(metadataCalls).toHaveLength(1)
+    expectFn(metadataCalls[0].title).toBe("quick - Fix flaky test")
+  })
+
   testFn("captures late-resolved session id and emits synced metadata", async () => {
     //#given - background task session id appears after launch via manager polling
     const metadataCalls: any[] = []
