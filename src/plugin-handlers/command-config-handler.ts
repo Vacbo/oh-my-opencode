@@ -25,6 +25,7 @@ import {
   getSkillPluginConflictWarning,
   log,
 } from "../shared";
+import { resolveSkillSourceSettings } from "../shared/skill-source-settings";
 import type { PluginComponents } from "./plugin-components-loader";
 
 export async function applyCommandConfig(params: {
@@ -39,7 +40,9 @@ export async function applyCommandConfig(params: {
   const systemCommands = (params.config.command as Record<string, unknown>) ?? {};
 
   const includeClaudeCommands = params.pluginConfig.claude_code?.commands ?? true;
-  const includeClaudeSkills = params.pluginConfig.claude_code?.skills ?? true;
+  const { includeClaudeSkills, includeAgentsSkills } = resolveSkillSourceSettings(
+    params.pluginConfig,
+  );
 
   const externalSkillPlugin = detectExternalSkillPlugin(params.ctx.directory);
   if (includeClaudeSkills && externalSkillPlugin.detected) {
@@ -68,9 +71,9 @@ export async function applyCommandConfig(params: {
     loadOpencodeGlobalCommands(),
     loadOpencodeProjectCommands(params.ctx.directory),
     includeClaudeSkills ? loadUserSkills() : Promise.resolve({}),
-    includeClaudeSkills ? loadGlobalAgentsSkills() : Promise.resolve({}),
+    includeAgentsSkills ? loadGlobalAgentsSkills() : Promise.resolve({}),
     includeClaudeSkills ? loadProjectSkills(params.ctx.directory) : Promise.resolve({}),
-    includeClaudeSkills ? loadProjectAgentsSkills(params.ctx.directory) : Promise.resolve({}),
+    includeAgentsSkills ? loadProjectAgentsSkills(params.ctx.directory) : Promise.resolve({}),
     loadOpencodeGlobalSkills(),
     loadOpencodeProjectSkills(params.ctx.directory),
   ]);

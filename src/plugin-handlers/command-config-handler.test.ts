@@ -108,6 +108,58 @@ describe("applyCommandConfig", () => {
     expect(commandConfig["agents-global-skill"]?.description).toContain("Agents global skill");
   });
 
+  test("skips .agents skills when claude_code.skills.agents is false", async () => {
+    // given
+    const config: Record<string, unknown> = { command: {} };
+
+    // when
+    await applyCommandConfig({
+      config,
+      pluginConfig: {
+        ...createPluginConfig(),
+        claude_code: {
+          skills: {
+            agents: false,
+          },
+        },
+      },
+      ctx: { directory: "/tmp" },
+      pluginComponents: createPluginComponents(),
+    });
+
+    // then
+    expect(loadUserSkillsSpy).toHaveBeenCalledTimes(1);
+    expect(loadProjectSkillsSpy).toHaveBeenCalledTimes(1);
+    expect(loadGlobalAgentsSkillsSpy).not.toHaveBeenCalled();
+    expect(loadProjectAgentsSkillsSpy).not.toHaveBeenCalled();
+  });
+
+  test("loads only .agents skills when claude_code.skills.claude is false", async () => {
+    // given
+    const config: Record<string, unknown> = { command: {} };
+
+    // when
+    await applyCommandConfig({
+      config,
+      pluginConfig: {
+        ...createPluginConfig(),
+        claude_code: {
+          skills: {
+            claude: false,
+          },
+        },
+      },
+      ctx: { directory: "/tmp" },
+      pluginComponents: createPluginComponents(),
+    });
+
+    // then
+    expect(loadUserSkillsSpy).not.toHaveBeenCalled();
+    expect(loadProjectSkillsSpy).not.toHaveBeenCalled();
+    expect(loadGlobalAgentsSkillsSpy).toHaveBeenCalledTimes(1);
+    expect(loadProjectAgentsSkillsSpy).toHaveBeenCalledTimes(1);
+  });
+
   test("normalizes Atlas command agents to the runtime list name used by opencode command routing", async () => {
     // given
     loadBuiltinCommandsSpy.mockReturnValue({
