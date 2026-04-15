@@ -194,7 +194,7 @@ When you use a Category, a special agent called **Sisyphus-Junior** performs the
 
 ### Rename Compatibility
 
-The published package and binary remain `oh-my-opencode`. Inside `opencode.json`, the compatibility layer now prefers the plugin entry `oh-my-openagent`, while legacy `oh-my-opencode` entries still load with a warning. Plugin config files (`oh-my-openagent.json[c]` or legacy `oh-my-opencode.json[c]`) are recognized during the transition. Run `bunx oh-my-opencode doctor` to check for legacy package name warnings.
+Install from the published npm package `@vacbo/oh-my-opencode`. The installed binary remains `oh-my-opencode`. Inside `opencode.json`, the compatibility layer now prefers the plugin entry `oh-my-openagent`, while legacy `oh-my-opencode` entries still load with a warning. Plugin config files (`oh-my-openagent.json[c]` or legacy `oh-my-opencode.json[c]`) are recognized during the transition. Run `bunx @vacbo/oh-my-opencode doctor` to check for legacy package name warnings.
 
 ### Fallback Models
 
@@ -916,7 +916,7 @@ When a skill MCP has `oauth` configured:
 Pre-authenticate via CLI:
 
 ```bash
-bunx oh-my-opencode mcp oauth login <server-name> --server-url https://api.example.com
+bunx @vacbo/oh-my-opencode mcp oauth login <server-name> --server-url https://api.example.com
 ```
 
 ## Model Capabilities
@@ -928,7 +928,7 @@ Model capabilities are models.dev-backed, with a refreshable cache and compatibi
 Update the local cache with the latest model information:
 
 ```bash
-bunx oh-my-opencode refresh-model-capabilities
+bunx @vacbo/oh-my-opencode refresh-model-capabilities
 ```
 
 Configure automatic refresh at startup:
@@ -946,7 +946,7 @@ Configure automatic refresh at startup:
 
 ### Capability Diagnostics
 
-Run `bunx oh-my-opencode doctor` to see capability diagnostics including:
+Run `bunx @vacbo/oh-my-opencode doctor` to see capability diagnostics including:
 - effective model resolution for agents and categories
 - warnings when configured models rely on compatibility fallback
 - override compatibility details alongside model resolution output

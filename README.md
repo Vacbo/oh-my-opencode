@@ -110,7 +110,7 @@ Fetch the installation guide and follow it:
 curl -s https://raw.githubusercontent.com/code-yeongyu/oh-my-openagent/refs/heads/dev/docs/guide/installation.md
 ```
 
-**Note**: Use the published package and binary name `oh-my-opencode`. Inside `opencode.json`, the compatibility layer now prefers the plugin entry `oh-my-openagent`, while legacy `oh-my-opencode` entries still load with a warning. Plugin config files still commonly use `oh-my-opencode.json` or `oh-my-opencode.jsonc`, and both legacy and renamed basenames are recognized during the transition.
+**Note**: Use the published npm package name `@vacbo/oh-my-opencode` when invoking through `bunx` or `npx`. The installed CLI binary still runs as `oh-my-opencode`. Inside `opencode.json`, the compatibility layer now prefers the plugin entry `oh-my-openagent`, while legacy `oh-my-opencode` entries still load with a warning. Plugin config files still commonly use `oh-my-opencode.json` or `oh-my-opencode.jsonc`, and both legacy and renamed basenames are recognized during the transition.
 
 Anonymous telemetry is disabled by default. To opt in, set both `OMO_SEND_ANONYMOUS_TELEMETRY=1` and `POSTHOG_API_KEY=<your project key>`. It uses PostHog with a hashed installation identifier, never the raw hostname. You can still force-disable it with `OMO_DISABLE_POSTHOG=1`. See [Privacy Policy](docs/legal/privacy-policy.md) and [Terms of Service](docs/legal/terms-of-service.md).
 
@@ -322,7 +322,7 @@ See full [Features Documentation](docs/reference/features.md).
 - **Built-in MCPs**: websearch (Exa), context7 (docs), grep_app (GitHub search)
 - **Session Tools**: List, read, search, and analyze session history
 - **Productivity Features**: Ralph Loop, Todo Enforcer, Comment Checker, Think Mode, and more
-- **Doctor Command**: Built-in diagnostics (`bunx oh-my-opencode doctor`) verify plugin registration, config, models, and environment
+- **Doctor Command**: Built-in diagnostics (`bunx @vacbo/oh-my-opencode doctor`) verify plugin registration, config, models, and environment
 - **Model Fallbacks**: `fallback_models` can mix plain model strings with per-fallback object settings in the same array
 - **File Prompts**: Load prompts from files with `file://` support in agent configurations
 - **Session Recovery**: Automatic recovery from session errors, context window limits, and API failures
