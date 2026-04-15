@@ -141,21 +141,11 @@ jobs:
           && (steps.rebase.outputs.head_moved == 'true' || steps.rebase.outputs.tracker_updated == 'true')
         run: git push origin dev --force-with-lease
 
-      - name: Trigger publish workflow
+      - name: Publish reminder
         if: |
           steps.check.outputs.skip == 'false'
           && steps.rebase.outputs.success == 'true'
           && steps.rebase.outputs.head_moved == 'true'
-        uses: actions/github-script@v7
-        with:
-          script: |
-            await github.rest.actions.createWorkflowDispatch({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              workflow_id: 'publish.yml',
-              ref: 'dev',
-              inputs: {
-                bump: 'patch',
-                skip_platform: 'false',
-              },
-            });
+        run: |
+          echo "Upstream sync moved dev to ${{ steps.check.outputs.latest }}."
+          echo "Release remains a separate manual action via publish.yml to avoid automated publish loops."
