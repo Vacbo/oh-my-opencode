@@ -1,14 +1,23 @@
 import { availableProviders, parseChainSpec, PROVIDERS, type ChainEntry } from "./providers"
 import type { AnalyzerConfig } from "./types"
 
+// Chain ordering: strongest free model first, unlimited-daily provider
+// next, quota-limited provider last. Fallback triggers on any retriable
+// failure (429 rate limit, 402 credit, 403 quota, 400 context) as defined
+// in ai-client classifyError(). Per-provider rate caps live in providers.ts
+// (PROVIDERS.<name>.rateLimitPerMinute) -- see that file for the source of
+// truth on throttling. The rationale for ordering is that OpenRouter free
+// hosts the strongest free models (nemotron-120b, qwen3-coder-480b) but
+// has a daily cap, NVIDIA NIM has generous rate-limited capacity with
+// no meaningful daily cap, and GitHub Models has the tightest daily caps.
 const DEFAULT_CLASSIFY_CHAIN =
-  "github:openai/gpt-4.1-mini,openrouter:qwen/qwen3-coder:free,nvidia:nvidia/llama-3.3-nemotron-super-49b-v1"
+  "openrouter:qwen/qwen3-coder:free,nvidia:nvidia/llama-3.3-nemotron-super-49b-v1,github:openai/gpt-4.1-mini"
 
 const DEFAULT_SLOP_VERIFY_CHAIN =
-  "nvidia:nvidia/llama-3.3-nemotron-super-49b-v1,openrouter:nvidia/nemotron-3-super-120b-a12b:free,github:openai/gpt-4.1"
+  "openrouter:nvidia/nemotron-3-super-120b-a12b:free,nvidia:nvidia/llama-3.3-nemotron-super-49b-v1,github:openai/gpt-4.1"
 
 const DEFAULT_SYNTHESIS_CHAIN =
-  "openrouter:qwen/qwen3-next-80b-a3b-instruct:free,nvidia:nvidia/llama-3.3-nemotron-super-49b-v1,github:openai/gpt-4.1"
+  "openrouter:nvidia/nemotron-3-super-120b-a12b:free,nvidia:nvidia/llama-3.3-nemotron-super-49b-v1,github:openai/gpt-4.1"
 
 function requireEnv(name: string): string {
   const value = process.env[name]
