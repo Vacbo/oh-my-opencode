@@ -6,7 +6,11 @@ const DEFAULT_DIFF_CHARS = 24000
 export async function ensureUpstreamRemote(upstreamRepo: string): Promise<void> {
   await $`git remote remove upstream`.quiet().nothrow()
   await $`git remote add upstream https://github.com/${upstreamRepo}.git`.quiet()
-  await $`git fetch --tags upstream`.quiet()
+  // --force: upstream wins when its tag SHA differs from the fork's. Forks
+  // sometimes rewrite tag history during sync; without --force the fetch
+  // exits non-zero and the whole pipeline aborts. The CI clone is ephemeral
+  // and never pushed, so overwriting local tags here is safe.
+  await $`git fetch --force --tags upstream`.quiet()
 }
 
 export async function tagExists(tag: string): Promise<boolean> {
