@@ -1,9 +1,18 @@
-name: Sync Upstream
+name: Sync Upstream (DISABLED)
+
+# Superseded by upstream-tag-watcher.yml + upstream-analyzer.yml.
+# The analyzer opens draft PRs per batch (good / review / slop) instead of
+# force-pushing rebased dev. This file is kept (gated off) for reference
+# and to preserve git history; delete once the analyzer pipeline is proven.
 
 on:
-  schedule:
-    - cron: "0 */6 * * *"
   workflow_dispatch:
+    inputs:
+      i_understand_this_is_legacy:
+        description: "Type EXACTLY 'yes-legacy-force-sync' to run this legacy workflow (superseded by upstream-analyzer)"
+        required: true
+        type: string
+        default: ""
 
 concurrency:
   group: sync-upstream
@@ -16,6 +25,7 @@ permissions:
 
 jobs:
   sync:
+    if: ${{ inputs.i_understand_this_is_legacy == 'yes-legacy-force-sync' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -81,31 +91,33 @@ jobs:
 
           if ! git rebase "$TARGET"; then
             git rebase --abort
-            printf 'success=false\n' >> "$GITHUB_OUTPUT"
-            printf 'head_moved=false\n' >> "$GITHUB_OUTPUT"
-            printf 'tracker_updated=false\n' >> "$GITHUB_OUTPUT"
+            {
+              echo "success=false"
+              echo "head_moved=false"
+              echo "tracker_updated=false"
+            } >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
           HEAD_AFTER_REBASE=$(git rev-parse HEAD)
           if [ "$HEAD_BEFORE" = "$HEAD_AFTER_REBASE" ]; then
-            printf 'head_moved=false\n' >> "$GITHUB_OUTPUT"
+            echo "head_moved=false" >> "$GITHUB_OUTPUT"
             echo "Rebase was a no-op (upstream tag already ancestor of dev)"
           else
-            printf 'head_moved=true\n' >> "$GITHUB_OUTPUT"
+            echo "head_moved=true" >> "$GITHUB_OUTPUT"
           fi
 
           printf '%s\n' "$TAG" > upstream-version.txt
           git add upstream-version.txt
           if git diff --cached --quiet; then
-            printf 'tracker_updated=false\n' >> "$GITHUB_OUTPUT"
+            echo "tracker_updated=false" >> "$GITHUB_OUTPUT"
             echo "Tracker already at $TAG"
           else
             git commit -m "chore(sync): track upstream ${TAG}"
-            printf 'tracker_updated=true\n' >> "$GITHUB_OUTPUT"
+            echo "tracker_updated=true" >> "$GITHUB_OUTPUT"
           fi
 
-          printf 'success=true\n' >> "$GITHUB_OUTPUT"
+          echo "success=true" >> "$GITHUB_OUTPUT"
 
       - name: Open issue on rebase failure
         if: steps.check.outputs.skip == 'false' && steps.rebase.outputs.success == 'false'
