@@ -17,6 +17,7 @@ interface WorkflowArtifacts {
     title: string
     body: string
     skipped: boolean
+    pushOutcome: string
   }>
 }
 
@@ -28,16 +29,29 @@ function buildWorkflowArtifacts(result: PipelineResult): WorkflowArtifacts {
     verifications: result.verifications,
     synthesis: result.synthesis,
     batches: result.batches,
+    pushAttempted: result.pushAttempted,
   })
   const issueLabels = buildIssueLabels(result.synthesis, result.config.toTag)
 
-  const batchPrSpecs = result.batches.map((batch) => ({
-    batch: batch.batch,
-    branchName: batch.branchName,
-    title: `[${batch.batch}] Upstream sync ${result.config.fromTag} → ${result.config.toTag}`,
-    body: buildBatchPrBody(batch, result.commits, null),
-    skipped: batch.skipped || batch.appliedCommits.length === 0,
-  }))
+  const batchPrSpecs = result.batches.map((batch) => {
+    // A PR can only be opened if the branch actually reached origin.
+    // Three ways it might not:
+    //   1. batch.skipped (no commits in this verdict class)
+    //   2. no commits cherry-picked successfully
+    //   3. push was attempted but failed (workflow-permission / other)
+    //   4. push was skipped entirely (PUSH_BRANCHES=false, dry run)
+    const branchOnOrigin = result.pushAttempted && batch.pushOutcome === "ok"
+    const skipped =
+      batch.skipped || batch.appliedCommits.length === 0 || !branchOnOrigin
+    return {
+      batch: batch.batch,
+      branchName: batch.branchName,
+      title: `[${batch.batch}] Upstream sync ${result.config.fromTag} → ${result.config.toTag}`,
+      body: buildBatchPrBody(batch, result.commits, null),
+      skipped,
+      pushOutcome: batch.pushOutcome ?? (result.pushAttempted ? "not-attempted" : "dry-run"),
+    }
+  })
 
   return { issueTitle, issueBody, issueLabels, batchPrSpecs }
 }

@@ -49,14 +49,20 @@ export async function getDependencyChanges(fromTag: string, toTag: string): Prom
 }
 
 export async function resetWorkingTree(): Promise<void> {
-  // `bun install` without --frozen-lockfile may modify bun.lock, which
-  // blocks subsequent `git checkout -b` with "local changes would be
-  // overwritten". Reset discards every uncommitted modification in the
-  // ephemeral CI clone so the batch-build phase starts from a clean slate.
-  // --hard HEAD: throw away tracked file changes. -fdx: remove untracked
-  // files and ignored files (node_modules, .analyzer-output, etc).
+  // `bun install` modifies bun.lock, which blocks `git checkout -b` with
+  // "local changes would be overwritten". Reset discards tracked-file
+  // modifications in the ephemeral CI clone so the batch-build phase
+  // starts from a clean slate. Untracked files (.analyzer-output,
+  // node_modules) stay intact because we deliberately skip `git clean`.
   await $`git reset --hard HEAD`.quiet().nothrow()
-  await $`git clean -fdx -e .analyzer-output`.quiet().nothrow()
+}
+
+export async function commitTouchesWorkflow(sha: string): Promise<boolean> {
+  const files = await $`git show --name-only --format= ${sha}`.text()
+  return files
+    .split("\n")
+    .map((line) => line.trim())
+    .some((file) => file.startsWith(".github/workflows/"))
 }
 
 export async function createBranchFromTag(branchName: string, baseTag: string): Promise<void> {
@@ -75,6 +81,18 @@ export async function getCurrentBranch(): Promise<string> {
   return (await $`git rev-parse --abbrev-ref HEAD`.text()).trim()
 }
 
-export async function pushBranch(branch: string): Promise<void> {
-  await $`git push origin ${branch} --force-with-lease`.quiet()
+export type PushOutcome = "ok" | "blocked-by-workflow-permission" | "failed"
+
+export async function pushBranch(branch: string): Promise<PushOutcome> {
+  const result = await $`git push origin ${branch} --force-with-lease`.quiet().nothrow()
+  if (result.exitCode === 0) return "ok"
+  const stderr = result.stderr.toString()
+  // GITHUB_TOKEN cannot create or modify files under .github/workflows/
+  // without the `workflows` scope, which it never has. Surface this as a
+  // distinct outcome so the issue body can flag it rather than failing
+  // the whole pipeline.
+  if (/without `?workflows`? permission/i.test(stderr)) {
+    return "blocked-by-workflow-permission"
+  }
+  return "failed"
 }

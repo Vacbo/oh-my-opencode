@@ -55,6 +55,16 @@ function parseJsonResponse(raw: string): unknown {
   }
 }
 
+// gpt-5 family and o-series models reject `max_tokens`; they require
+// `max_completion_tokens` and ignore `temperature`. Detect up front so
+// we never waste a request on a 400 "Unsupported parameter" response.
+// Match both prefixed ("openai/gpt-5-mini") and bare ("gpt-5-mini")
+// names since MODEL_* env vars are not validated to include a provider.
+function tokenFieldForModel(model: string): "max_tokens" | "max_completion_tokens" {
+  if (/(^|\/)(gpt-5|o\d+)/i.test(model)) return "max_completion_tokens"
+  return "max_tokens"
+}
+
 async function postChatCompletion(
   token: string,
   model: string,
@@ -62,6 +72,16 @@ async function postChatCompletion(
   maxTokens: number,
   temperature: number,
 ): Promise<string> {
+  const tokenField = tokenFieldForModel(model)
+  const body: Record<string, unknown> = {
+    model,
+    messages,
+    [tokenField]: maxTokens,
+  }
+  if (tokenField === "max_tokens") {
+    body.temperature = temperature
+  }
+
   const response = await fetch(ENDPOINT, {
     method: "POST",
     headers: {
@@ -69,17 +89,12 @@ async function postChatCompletion(
       "Content-Type": "application/json",
       Accept: "application/json",
     },
-    body: JSON.stringify({
-      model,
-      messages,
-      max_tokens: maxTokens,
-      temperature,
-    }),
+    body: JSON.stringify(body),
   })
 
   if (!response.ok) {
-    const body = await response.text()
-    throw new GithubModelsError(`GitHub Models returned ${response.status}`, response.status, body)
+    const errorBody = await response.text()
+    throw new GithubModelsError(`GitHub Models returned ${response.status}`, response.status, errorBody)
   }
 
   const data = (await response.json()) as { choices?: Array<{ message?: { content?: string } }> }
@@ -115,7 +130,10 @@ function isQuotaError(err: unknown): boolean {
 function isContextLengthError(err: unknown): boolean {
   if (!(err instanceof GithubModelsError)) return false
   if (err.status !== 400) return false
-  return /context[_ -]?length|token|too[_ -]?long|maximum/i.test(err.body)
+  // Narrow: only real context-length rejections. The "Unsupported parameter:
+  // max_tokens" 400 no longer reaches here because tokenFieldForModel picks
+  // the right field up front.
+  return /context[_ -]?length|too[_ -]?long|maximum\s+context/i.test(err.body)
 }
 
 export function shouldFallback(err: unknown): boolean {
