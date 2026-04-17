@@ -58,8 +58,10 @@ function parseJsonResponse(raw: string): unknown {
 // gpt-5 family and o-series models reject `max_tokens`; they require
 // `max_completion_tokens` and ignore `temperature`. Detect up front so
 // we never waste a request on a 400 "Unsupported parameter" response.
+// Match both prefixed ("openai/gpt-5-mini") and bare ("gpt-5-mini")
+// names since MODEL_* env vars are not validated to include a provider.
 function tokenFieldForModel(model: string): "max_tokens" | "max_completion_tokens" {
-  if (/\/(gpt-5|o[0-9])/i.test(model)) return "max_completion_tokens"
+  if (/(^|\/)(gpt-5|o\d+)/i.test(model)) return "max_completion_tokens"
   return "max_tokens"
 }
 

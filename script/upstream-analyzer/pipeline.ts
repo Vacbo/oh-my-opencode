@@ -138,6 +138,7 @@ export interface PipelineRunOptions {
 
 export interface PipelineResult extends PipelineOutput {
   batches: BatchResult[]
+  pushAttempted: boolean
 }
 
 export async function runPipeline(options: PipelineRunOptions): Promise<PipelineResult> {
@@ -163,9 +164,11 @@ export async function runPipeline(options: PipelineRunOptions): Promise<Pipeline
   await writeArtifact(outputDir, "synthesis.json", synthesis)
 
   const batches = await runBatchBuilding(options.config, final)
-  await writeArtifact(outputDir, "batches.json", batches)
-
   await pushIfRequested(batches, options.pushBranches)
+  // Write batches.json AFTER pushIfRequested so pushOutcome lands in the
+  // persisted artifact. Writing it earlier (as in the prior revision)
+  // leaves the on-disk record missing push state.
+  await writeArtifact(outputDir, "batches.json", batches)
 
   const result: PipelineResult = {
     config: options.config,
@@ -173,6 +176,7 @@ export async function runPipeline(options: PipelineRunOptions): Promise<Pipeline
     verifications,
     synthesis,
     batches,
+    pushAttempted: options.pushBranches,
   }
 
   await writeArtifact(outputDir, "pipeline-result.json", result)

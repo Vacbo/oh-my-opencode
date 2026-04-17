@@ -29,9 +29,14 @@ function renderCommitLines(commits: CommitClassification[]): string {
     .join("\n")
 }
 
-function renderBatchNotes(batch: BatchResult | undefined): string {
+function renderBatchNotes(batch: BatchResult | undefined, pushAttempted: boolean): string {
   if (!batch || batch.skipped) return ""
-  const notes: string[] = [`Branch: \`${batch.branchName}\``]
+  const branchOnOrigin = pushAttempted && batch.pushOutcome === "ok"
+  const branchLabel = branchOnOrigin
+    ? `Branch: \`${batch.branchName}\` (on origin)`
+    : `Branch: \`${batch.branchName}\` (local only — not on origin)`
+  const notes: string[] = [branchLabel]
+
   if (batch.conflictCommits.length > 0) {
     notes.push(
       `> ⚠️ ${batch.conflictCommits.length} commit(s) failed to cherry-pick and are NOT in the draft PR.`,
@@ -43,6 +48,10 @@ function renderBatchNotes(batch: BatchResult | undefined): string {
     )
   } else if (batch.pushOutcome === "failed") {
     notes.push("> 🚫 Push to origin failed for an unexpected reason. Check the workflow logs.")
+  } else if (!pushAttempted) {
+    notes.push(
+      "> ℹ️ Push was not attempted (`push_branches=false`). The batch branch was built in the runner but not uploaded; re-run with `push_branches=true` to open a draft PR.",
+    )
   }
   if (batch.workflowTouchingCommits.length > 0) {
     const shortShas = batch.workflowTouchingCommits.map((sha) => `\`${sha.slice(0, 7)}\``).join(", ")
@@ -58,8 +67,9 @@ function renderBatchSection(
   description: string,
   commits: CommitClassification[],
   batch: BatchResult | undefined,
+  pushAttempted: boolean,
 ): string {
-  const notes = renderBatchNotes(batch)
+  const notes = renderBatchNotes(batch, pushAttempted)
   return [`### ${heading}`, `_${description}_`, "", renderCommitLines(commits), notes, ""].join("\n")
 }
 
@@ -93,6 +103,7 @@ interface IssueReportInput {
   verifications: SlopVerification[]
   synthesis: SynthesisResult
   batches: BatchResult[]
+  pushAttempted: boolean
 }
 
 function buildHeader(input: IssueReportInput): string {
@@ -135,18 +146,26 @@ function buildBatchDetails(input: IssueReportInput): string {
   const slopCommits = input.classifications.filter((c) => c.verdict === "SLOP")
 
   return [
-    renderBatchSection("🟢 Good batch", "Classified as real value. Candidate for merge.", goodCommits, goodBatch),
+    renderBatchSection(
+      "🟢 Good batch",
+      "Classified as real value. Candidate for merge.",
+      goodCommits,
+      goodBatch,
+      input.pushAttempted,
+    ),
     renderBatchSection(
       "🟡 Review batch",
       "Ambiguous. Human should review before merging.",
       reviewCommits,
       reviewBatch,
+      input.pushAttempted,
     ),
     renderBatchSection(
       "🔴 Slop batch",
       "Classified as AI slop or pointless churn. Do not merge as-is; rewrite intent if salvageable.",
       slopCommits,
       slopBatch,
+      input.pushAttempted,
     ),
   ].join("\n")
 }
