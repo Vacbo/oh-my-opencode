@@ -44,18 +44,15 @@ Beyond GOOD/SLOP ratios, explicitly assess:
 
 ## Output format
 
-Return VALID JSON ONLY:
+The system validates your response against a strict JSON schema.
+Return EXACTLY these fields:
 
-```
-{
-  "recommendation": "MERGE_CLEAN" | "CHERRY_PICK" | "SKIP" | "HOLD_FOR_HUMAN",
-  "confidence": "high" | "medium" | "low",
-  "summary": "3-5 sentence plain-English verdict",
-  "slop_ratio_percent": <number 0-100>,
-  "breaking_changes": [{"description": "...", "severity": "high|medium|low"}],
-  "dependency_changes": ["..."],
-  "architecture_drift": ["..."],
-  "hidden_concerns": ["..."],
-  "action_items": ["specific thing a human should verify before merging"]
-}
-```
+- `recommendation`: "MERGE_CLEAN" | "CHERRY_PICK" | "SKIP" | "HOLD_FOR_HUMAN"
+- `confidence`: "high" | "medium" | "low"
+- `summary`: 3-5 sentence plain-English verdict
+- `slop_ratio_percent`: integer 0-100
+- `breaking_changes`: array of `{description, severity}` objects where severity is "high" | "medium" | "low"
+- `dependency_changes`: string array
+- `architecture_drift`: string array
+- `hidden_concerns`: string array
+- `action_items`: string array of concrete checks a human should run before merging

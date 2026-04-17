@@ -1,5 +1,8 @@
+import { generateStructured } from "./ai-client"
 import { getCommitDiff } from "./git-inspector"
-import { inferJsonWithFallback } from "./github-models-client"
+import { slopVerifyResultSchema } from "./schemas"
+import { CLASSIFIER_TOOLS } from "./tools"
+import type { ChainEntry } from "./providers"
 import type {
   CommitClassification,
   CommitVerdict,
@@ -7,13 +10,8 @@ import type {
   SlopVerifyVerdict,
 } from "./types"
 
-const MAX_TOKENS_OUT = 768
-
-// gpt-5-mini caps input at ~4K tokens on Copilot Pro/Student tier, so we keep
-// verifier diff payloads much smaller than the pass-1 classifier. The fallback
-// chain (gpt-4.1 / gpt-4.1-mini) has higher headroom (8K tokens), so larger
-// payloads still fit there if gpt-5-mini quota is exhausted.
-const MAX_DIFF_CHARS = 10000
+const MAX_OUTPUT_TOKENS = 768
+const DEFAULT_DIFF_BUDGET = 12000
 
 function buildUserPrompt(classification: CommitClassification, diff: string): string {
   return [
@@ -28,25 +26,16 @@ function buildUserPrompt(classification: CommitClassification, diff: string): st
   ].join("\n")
 }
 
-function normalizeVerdict(raw: unknown): SlopVerifyVerdict {
-  if (raw === "CONFIRMED_SLOP" || raw === "DEMOTE_TO_REVIEW" || raw === "DEMOTE_TO_GOOD") {
-    return raw
-  }
-  return "DEMOTE_TO_REVIEW"
-}
-
-function normalizeBehaviorDelta(raw: unknown): "none" | "minor" | "significant" {
-  if (raw === "none" || raw === "minor" || raw === "significant") return raw
-  return "none"
-}
-
 function applyVerdict(result: SlopVerifyVerdict): CommitVerdict {
   if (result === "CONFIRMED_SLOP") return "SLOP"
   if (result === "DEMOTE_TO_GOOD") return "GOOD"
   return "NEEDS_REVIEW"
 }
 
-function fallbackVerification(classification: CommitClassification, reason: string): SlopVerification {
+function fallbackVerification(
+  classification: CommitClassification,
+  reason: string,
+): SlopVerification {
   return {
     sha: classification.sha,
     originalVerdict: classification.verdict,
@@ -57,64 +46,63 @@ function fallbackVerification(classification: CommitClassification, reason: stri
   }
 }
 
-export interface SlopVerifyModels {
-  primary: string
-  fallbacks: string[]
+export interface VerifyBatchOptions {
+  classifications: CommitClassification[]
+  systemPrompt: string
+  chain: ChainEntry[]
+  onProgress?: (index: number, total: number, verification: SlopVerification) => void
+  onProviderFallback?: (args: { failed: ChainEntry; next: ChainEntry; reason: string }) => void
 }
 
-export async function verifySlopCommit(
+async function verifyOne(
   classification: CommitClassification,
   systemPrompt: string,
-  models: SlopVerifyModels,
+  chain: ChainEntry[],
+  onProviderFallback?: VerifyBatchOptions["onProviderFallback"],
 ): Promise<SlopVerification> {
-  const diff = await getCommitDiff(classification.sha, MAX_DIFF_CHARS)
+  const diff = await getCommitDiff(classification.sha, DEFAULT_DIFF_BUDGET)
 
-  let parsed: unknown
   try {
-    const result = await inferJsonWithFallback({
-      primaryModel: models.primary,
-      fallbackModels: models.fallbacks,
+    const result = await generateStructured({
+      chain,
+      schema: slopVerifyResultSchema,
+      schemaName: "SlopVerifyResult",
+      schemaDescription: "Deeper second-pass review of a SLOP-classified commit",
       systemPrompt,
       userPrompt: buildUserPrompt(classification, diff),
-      maxTokens: MAX_TOKENS_OUT,
+      tools: CLASSIFIER_TOOLS,
+      maxOutputTokens: MAX_OUTPUT_TOKENS,
       temperature: 0.2,
-      onFallback: (failed, next, reason) => {
-        console.warn(`[verifier] ${classification.shortSha}: ${failed} failed (${reason}); trying ${next}`)
-      },
+      onProviderFallback,
     })
-    parsed = result.parsed
+
+    return {
+      sha: classification.sha,
+      originalVerdict: classification.verdict,
+      finalVerdict: applyVerdict(result.object.verdict),
+      verifyResult: result.object.verdict,
+      reasoning: result.object.reasoning,
+      behaviorDelta: result.object.behavior_delta,
+    }
   } catch (cause) {
     return fallbackVerification(classification, (cause as Error).message)
-  }
-
-  if (!parsed || typeof parsed !== "object") {
-    return fallbackVerification(classification, "Verifier returned non-JSON")
-  }
-
-  const record = parsed as Record<string, unknown>
-  const verifyResult = normalizeVerdict(record.verdict)
-  const reasoning =
-    typeof record.reasoning === "string" ? record.reasoning.trim() : "No reasoning provided"
-
-  return {
-    sha: classification.sha,
-    originalVerdict: classification.verdict,
-    finalVerdict: applyVerdict(verifyResult),
-    verifyResult,
-    reasoning,
-    behaviorDelta: normalizeBehaviorDelta(record.behavior_delta),
   }
 }
 
 export async function verifySlopCommits(
-  classifications: CommitClassification[],
-  systemPrompt: string,
-  models: SlopVerifyModels,
+  options: VerifyBatchOptions,
 ): Promise<SlopVerification[]> {
-  const slopCandidates = classifications.filter((c) => c.verdict === "SLOP")
+  const candidates = options.classifications.filter((c) => c.verdict === "SLOP")
   const results: SlopVerification[] = []
-  for (const candidate of slopCandidates) {
-    results.push(await verifySlopCommit(candidate, systemPrompt, models))
+  for (let i = 0; i < candidates.length; i++) {
+    const verification = await verifyOne(
+      candidates[i],
+      options.systemPrompt,
+      options.chain,
+      options.onProviderFallback,
+    )
+    results.push(verification)
+    options.onProgress?.(i + 1, candidates.length, verification)
   }
   return results
 }

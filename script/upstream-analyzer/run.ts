@@ -82,12 +82,14 @@ async function main(): Promise<void> {
   const config = loadConfigFromEnv()
   const pushBranches = shouldPushBranches()
 
+  const describeChain = (chain: typeof config.classifyChain) =>
+    chain.map((entry) => `${entry.provider}:${entry.modelId}`).join(" -> ")
+
   console.log("[analyzer] starting pipeline")
   console.log(`[analyzer] upstream=${config.upstreamRepo} ${config.fromTag} -> ${config.toTag}`)
-  const verifyChain = [config.modelSlopVerify, ...config.modelSlopVerifyFallbacks].join(" -> ")
-  console.log(
-    `[analyzer] models: classify=${config.modelClassify} verify=${verifyChain} synth=${config.modelSynthesis}`,
-  )
+  console.log(`[analyzer] classify chain:  ${describeChain(config.classifyChain)}`)
+  console.log(`[analyzer] slop-verify chain: ${describeChain(config.slopVerifyChain)}`)
+  console.log(`[analyzer] synthesis chain:  ${describeChain(config.synthesisChain)}`)
   console.log(`[analyzer] pushBranches=${pushBranches}`)
 
   const result = await runPipeline({ config, pushBranches })

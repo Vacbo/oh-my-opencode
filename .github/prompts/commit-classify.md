@@ -42,18 +42,34 @@ flagged as NEEDS_REVIEW) cost a human 60 seconds of review. False negatives
 
 **Do not be charitable.** The upstream has burned this trust.
 
+## Tools available
+
+You have two optional tools. Call them ONLY when the diff alone is
+insufficient to judge the commit. Most commits should be classified
+without any tool call. Avoid tool calls on tiny or self-explanatory
+diffs (docs typos, dep bumps, obvious renames).
+
+- `read_file(path, startLine, endLine)` -- read a slice of a repository
+  file. Use when the diff touches a function whose wider body or
+  neighboring code matters for judgment.
+- `grep_callers(symbol, pathGlob?)` -- search for references to a
+  symbol. Use when the diff renames a function, changes a signature,
+  or removes an export, and you need to verify nothing external breaks.
+
+Keep tool calls surgical: at most 2 per commit, targeted queries, small
+slices. If you start a tool call, always complete the classification
+afterward -- never leave the verdict unsaid.
+
 ## Output format
 
-Return VALID JSON ONLY — no markdown fences, no prose before or after:
+The system will validate your response against a strict JSON schema.
+Return EXACTLY these fields -- nothing more, nothing less:
 
-```
-{
-  "verdict": "GOOD" | "NEEDS_REVIEW" | "SLOP",
-  "confidence": "high" | "medium" | "low",
-  "reason": "one sentence, concrete, references the actual change",
-  "slop_signals": ["signal 1", "signal 2", ...]
-}
-```
+- `verdict`: "GOOD" | "NEEDS_REVIEW" | "SLOP"
+- `confidence`: "high" | "medium" | "low"
+- `reason`: one sentence, concrete, references the actual change
+- `slop_signals`: array of matched symptoms from the list above (empty array if none)
 
-`slop_signals` is a (possibly empty) array of matched symptoms from the list
-above. `reason` must reference the specific change, not generic language.
+`slop_signals` must be concrete strings (e.g., "renamed function with no
+call-site benefit"). `reason` must reference the specific change, not
+generic language.

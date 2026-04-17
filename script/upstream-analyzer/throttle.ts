@@ -22,3 +22,13 @@ export class RateLimiter {
     this.nextAllowedAt = Date.now() + this.minIntervalMs
   }
 }
+
+const limiters = new Map<string, RateLimiter>()
+
+export function getLimiter(key: string, requestsPerMinute: number): RateLimiter {
+  const existing = limiters.get(key)
+  if (existing) return existing
+  const created = new RateLimiter({ requestsPerMinute })
+  limiters.set(key, created)
+  return created
+}

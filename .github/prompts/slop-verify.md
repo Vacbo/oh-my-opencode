@@ -45,15 +45,21 @@ Before producing the verdict, reason through:
 5. **Is this churn?** Rename-only commits, reformatting-only commits,
    reshuffling imports without reason — all CONFIRMED_SLOP.
 
+## Tools available
+
+You may call `read_file(path, startLine, endLine)` or
+`grep_callers(symbol, pathGlob?)` to verify claims before committing to
+a verdict. Since this is the second-pass review for a SLOP candidate,
+tool use is encouraged when the first-pass reason is non-obvious or
+when behavior-delta questions require seeing wider code context. Keep
+calls surgical: at most 2 per commit.
+
 ## Output format
 
-Return VALID JSON ONLY — no markdown fences, no prose:
+The system validates your response against a strict JSON schema.
+Return EXACTLY these fields:
 
-```
-{
-  "verdict": "CONFIRMED_SLOP" | "DEMOTE_TO_REVIEW" | "DEMOTE_TO_GOOD",
-  "reasoning": "2-4 sentences walking through your thinking",
-  "behavior_delta": "none" | "minor" | "significant",
-  "first_pass_was_correct": true | false
-}
-```
+- `verdict`: "CONFIRMED_SLOP" | "DEMOTE_TO_REVIEW" | "DEMOTE_TO_GOOD"
+- `reasoning`: 2-4 sentences walking through your thinking
+- `behavior_delta`: "none" | "minor" | "significant"
+- `first_pass_was_correct`: boolean

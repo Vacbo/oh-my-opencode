@@ -40,12 +40,25 @@ async function prepareUpstreamRange(config: AnalyzerConfig): Promise<void> {
   }
 }
 
+function describeChain(chain: AnalyzerConfig["classifyChain"]): string {
+  return chain.map((entry) => `${entry.provider}:${entry.modelId}`).join(" -> ")
+}
+
+function handleProviderFallback(step: string) {
+  return ({ failed, next, reason }: { failed: { provider: string; modelId: string }; next: { provider: string; modelId: string }; reason: string }) => {
+    logProgress(
+      `${step}/fallback`,
+      `${failed.provider}:${failed.modelId} failed (${reason.slice(0, 140)}); trying ${next.provider}:${next.modelId}`,
+    )
+  }
+}
+
 async function runPass1Classify(
   config: AnalyzerConfig,
   systemPrompt: string,
 ): Promise<CommitClassification[]> {
   const commits = await listCommitsInRange(config.fromTag, config.toTag)
-  logProgress("pass1", `classifying ${commits.length} commits with ${config.modelClassify}`)
+  logProgress("pass1", `classifying ${commits.length} commits (chain: ${describeChain(config.classifyChain)})`)
   if (commits.length === 0) {
     logProgress("pass1", "no commits in range, nothing to do")
     return []
@@ -53,10 +66,11 @@ async function runPass1Classify(
   return classifyCommitsSequentially({
     commits,
     systemPrompt,
-    model: config.modelClassify,
-    onProgress: async (i, n, classification) => {
+    chain: config.classifyChain,
+    onProgress: (i, n, classification) => {
       logProgress("pass1", `${i}/${n} ${classification.shortSha} => ${classification.verdict}`)
     },
+    onProviderFallback: handleProviderFallback("pass1"),
   })
 }
 
@@ -70,11 +84,15 @@ async function runPass2Verify(
     logProgress("pass2", "no SLOP candidates, skipping slop verifier")
     return { verifications: [], final: classifications }
   }
-  const chainDescription = [config.modelSlopVerify, ...config.modelSlopVerifyFallbacks].join(" -> ")
-  logProgress("pass2", `verifying ${slopCount} SLOP candidates (chain: ${chainDescription})`)
-  const verifications = await verifySlopCommits(classifications, systemPrompt, {
-    primary: config.modelSlopVerify,
-    fallbacks: config.modelSlopVerifyFallbacks,
+  logProgress("pass2", `verifying ${slopCount} SLOP candidates (chain: ${describeChain(config.slopVerifyChain)})`)
+  const verifications = await verifySlopCommits({
+    classifications,
+    systemPrompt,
+    chain: config.slopVerifyChain,
+    onProgress: (i, n, verification) => {
+      logProgress("pass2", `${i}/${n} ${verification.sha.slice(0, 7)} => ${verification.verifyResult}`)
+    },
+    onProviderFallback: handleProviderFallback("pass2"),
   })
   const final = applyVerificationsToClassifications(classifications, verifications)
   return { verifications, final }
@@ -85,14 +103,15 @@ async function runPass3Synthesize(
   classifications: CommitClassification[],
   systemPrompt: string,
 ): Promise<SynthesisResult> {
-  logProgress("pass3", `synthesizing release verdict with ${config.modelSynthesis}`)
+  logProgress("pass3", `synthesizing release verdict (chain: ${describeChain(config.synthesisChain)})`)
   return synthesizeRelease({
     fromTag: config.fromTag,
     toTag: config.toTag,
     upstreamRepo: config.upstreamRepo,
     classifications,
-    model: config.modelSynthesis,
+    chain: config.synthesisChain,
     systemPrompt,
+    onProviderFallback: handleProviderFallback("pass3"),
   })
 }
 

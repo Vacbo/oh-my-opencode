@@ -38,25 +38,20 @@ on:
         required: false
         default: true
         type: boolean
-      model_classify:
-        description: "Model for per-commit classification"
+      classify_chain:
+        description: "Comma-separated provider:model chain for pass 1 (per-commit classify)"
         required: false
-        default: "openai/gpt-4.1-mini"
+        default: "github:openai/gpt-4.1-mini,openrouter:qwen/qwen3-coder:free,nvidia:nvidia/llama-3.3-nemotron-super-49b-v1"
         type: string
-      model_slop_verify:
-        description: "Primary model for slop verification second-pass"
+      slop_verify_chain:
+        description: "Comma-separated provider:model chain for pass 2 (slop verification)"
         required: false
-        default: "openai/gpt-5-mini"
+        default: "nvidia:nvidia/llama-3.3-nemotron-super-49b-v1,openrouter:nvidia/nemotron-3-super-120b-a12b:free,github:openai/gpt-4.1"
         type: string
-      model_slop_verify_fallbacks:
-        description: "Comma-separated fallback chain when primary verifier quota/context is exhausted"
+      synthesis_chain:
+        description: "Comma-separated provider:model chain for pass 3 (release synthesis)"
         required: false
-        default: "openai/gpt-4.1,openai/gpt-4.1-mini"
-        type: string
-      model_synthesis:
-        description: "Model for release synthesis"
-        required: false
-        default: "openai/gpt-4.1"
+        default: "openrouter:qwen/qwen3-next-80b-a3b-instruct:free,nvidia:nvidia/llama-3.3-nemotron-super-49b-v1,github:openai/gpt-4.1"
         type: string
 
 concurrency:
@@ -89,20 +84,21 @@ jobs:
           INPUT_TO: ${{ github.event.inputs.to_tag }}
           INPUT_REPO: ${{ github.event.inputs.upstream_repo }}
           INPUT_PUSH: ${{ github.event.inputs.push_branches }}
-          INPUT_CLASSIFY: ${{ github.event.inputs.model_classify }}
-          INPUT_VERIFY: ${{ github.event.inputs.model_slop_verify }}
-          INPUT_VERIFY_FALLBACKS: ${{ github.event.inputs.model_slop_verify_fallbacks }}
-          INPUT_SYNTH: ${{ github.event.inputs.model_synthesis }}
+          INPUT_CLASSIFY_CHAIN: ${{ github.event.inputs.classify_chain }}
+          INPUT_SLOP_VERIFY_CHAIN: ${{ github.event.inputs.slop_verify_chain }}
+          INPUT_SYNTHESIS_CHAIN: ${{ github.event.inputs.synthesis_chain }}
         run: |
           set -euo pipefail
           FROM_TAG="${INPUT_FROM:-$DISPATCH_FROM}"
           TO_TAG="${INPUT_TO:-$DISPATCH_TO}"
           UPSTREAM_REPO="${INPUT_REPO:-${DISPATCH_REPO:-code-yeongyu/oh-my-openagent}}"
           PUSH_BRANCHES="${INPUT_PUSH:-true}"
-          MODEL_CLASSIFY="${INPUT_CLASSIFY:-openai/gpt-4.1-mini}"
-          MODEL_SLOP_VERIFY="${INPUT_VERIFY:-openai/gpt-5-mini}"
-          MODEL_SLOP_VERIFY_FALLBACKS="${INPUT_VERIFY_FALLBACKS:-openai/gpt-4.1,openai/gpt-4.1-mini}"
-          MODEL_SYNTHESIS="${INPUT_SYNTH:-openai/gpt-4.1}"
+          CLASSIFY_CHAIN_DEFAULT="github:openai/gpt-4.1-mini,openrouter:qwen/qwen3-coder:free,nvidia:nvidia/llama-3.3-nemotron-super-49b-v1"
+          SLOP_VERIFY_CHAIN_DEFAULT="nvidia:nvidia/llama-3.3-nemotron-super-49b-v1,openrouter:nvidia/nemotron-3-super-120b-a12b:free,github:openai/gpt-4.1"
+          SYNTHESIS_CHAIN_DEFAULT="openrouter:qwen/qwen3-next-80b-a3b-instruct:free,nvidia:nvidia/llama-3.3-nemotron-super-49b-v1,github:openai/gpt-4.1"
+          CLASSIFY_CHAIN="${INPUT_CLASSIFY_CHAIN:-$CLASSIFY_CHAIN_DEFAULT}"
+          SLOP_VERIFY_CHAIN="${INPUT_SLOP_VERIFY_CHAIN:-$SLOP_VERIFY_CHAIN_DEFAULT}"
+          SYNTHESIS_CHAIN="${INPUT_SYNTHESIS_CHAIN:-$SYNTHESIS_CHAIN_DEFAULT}"
 
           if [ -z "$FROM_TAG" ] || [ -z "$TO_TAG" ]; then
             echo "::error::from_tag and to_tag are required"
@@ -114,10 +110,9 @@ jobs:
             echo "to_tag=$TO_TAG"
             echo "upstream_repo=$UPSTREAM_REPO"
             echo "push_branches=$PUSH_BRANCHES"
-            echo "model_classify=$MODEL_CLASSIFY"
-            echo "model_slop_verify=$MODEL_SLOP_VERIFY"
-            echo "model_slop_verify_fallbacks=$MODEL_SLOP_VERIFY_FALLBACKS"
-            echo "model_synthesis=$MODEL_SYNTHESIS"
+            echo "classify_chain=$CLASSIFY_CHAIN"
+            echo "slop_verify_chain=$SLOP_VERIFY_CHAIN"
+            echo "synthesis_chain=$SYNTHESIS_CHAIN"
           } >> "$GITHUB_OUTPUT"
 
       - name: Configure git identity
@@ -143,13 +138,14 @@ jobs:
           UPSTREAM_REPO: ${{ steps.inputs.outputs.upstream_repo }}
           FROM_TAG: ${{ steps.inputs.outputs.from_tag }}
           TO_TAG: ${{ steps.inputs.outputs.to_tag }}
-          MODEL_CLASSIFY: ${{ steps.inputs.outputs.model_classify }}
-          MODEL_SLOP_VERIFY: ${{ steps.inputs.outputs.model_slop_verify }}
-          MODEL_SLOP_VERIFY_FALLBACKS: ${{ steps.inputs.outputs.model_slop_verify_fallbacks }}
-          MODEL_SYNTHESIS: ${{ steps.inputs.outputs.model_synthesis }}
+          CLASSIFY_CHAIN: ${{ steps.inputs.outputs.classify_chain }}
+          SLOP_VERIFY_CHAIN: ${{ steps.inputs.outputs.slop_verify_chain }}
+          SYNTHESIS_CHAIN: ${{ steps.inputs.outputs.synthesis_chain }}
           PUSH_BRANCHES: ${{ steps.inputs.outputs.push_branches }}
           OUTPUT_DIR: ${{ env.ANALYZER_OUTPUT_DIR }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
         run: bun run script/upstream-analyzer/run.ts
 
       - name: Upload analyzer artifacts
