@@ -1,0 +1,121 @@
+name: Upstream Tag Watcher
+
+# Polls the upstream repo for new stable tags every 15 minutes.
+# When a new tag appears, fires repository_dispatch("upstream-tag-detected")
+# which triggers upstream-analyzer.yml. Acts as a pseudo-webhook since we
+# cannot subscribe to events on a repo we do not own.
+
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: upstream-tag-watcher
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  actions: write
+
+env:
+  UPSTREAM_REPO: code-yeongyu/oh-my-openagent
+  WATCHER_STATE_FILE: .upstream-watcher-seen-tag
+
+jobs:
+  watch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: dev
+          fetch-depth: 0
+
+      - name: Resolve latest upstream stable tag
+        id: resolve
+        run: |
+          set -euo pipefail
+          LATEST=$(git ls-remote --tags --refs "https://github.com/${UPSTREAM_REPO}.git" 'v*' \
+            | awk '{print $2}' \
+            | sed 's|refs/tags/||' \
+            | grep -v -- '-' \
+            | sort -V \
+            | tail -1)
+
+          if [ -z "$LATEST" ]; then
+            echo "::warning::No stable v* tags found upstream"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          {
+            echo "latest=$LATEST"
+            echo "skip=false"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Read previously analyzed tag
+        id: read_state
+        if: steps.resolve.outputs.skip != 'true'
+        run: |
+          set -euo pipefail
+          STORED=""
+          if [ -f "upstream-version.txt" ]; then
+            STORED=$(tr -d '[:space:]' < upstream-version.txt)
+          fi
+          # Optional watcher-specific state (survives even if upstream-version.txt is ahead)
+          if [ -f "${WATCHER_STATE_FILE}" ]; then
+            LAST_SEEN=$(tr -d '[:space:]' < "${WATCHER_STATE_FILE}")
+          else
+            LAST_SEEN="$STORED"
+          fi
+
+          echo "stored=$STORED" >> "$GITHUB_OUTPUT"
+          echo "last_seen=$LAST_SEEN" >> "$GITHUB_OUTPUT"
+
+      - name: Decide whether to dispatch analyzer
+        id: decide
+        if: steps.resolve.outputs.skip != 'true'
+        env:
+          LATEST: ${{ steps.resolve.outputs.latest }}
+          LAST_SEEN: ${{ steps.read_state.outputs.last_seen }}
+          STORED: ${{ steps.read_state.outputs.stored }}
+        run: |
+          set -euo pipefail
+          if [ "$LATEST" = "$LAST_SEEN" ]; then
+            echo "Upstream unchanged at $LATEST"
+            echo "dispatch=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          FROM_TAG="${STORED:-$LAST_SEEN}"
+          if [ -z "$FROM_TAG" ]; then
+            echo "::warning::No baseline tag recorded; cannot compute range. Set upstream-version.txt first."
+            echo "dispatch=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "Upstream moved: $FROM_TAG -> $LATEST"
+          {
+            echo "from_tag=$FROM_TAG"
+            echo "to_tag=$LATEST"
+            echo "dispatch=true"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Fire repository_dispatch to analyzer
+        if: steps.decide.outputs.dispatch == 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const payload = {
+              from_tag: '${{ steps.decide.outputs.from_tag }}',
+              to_tag: '${{ steps.decide.outputs.to_tag }}',
+              upstream_repo: process.env.UPSTREAM_REPO,
+              detected_at: new Date().toISOString(),
+            };
+            await github.rest.repos.createDispatchEvent({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              event_type: 'upstream-tag-detected',
+              client_payload: payload,
+            });
+            core.notice(`Dispatched analyzer for ${payload.from_tag} -> ${payload.to_tag}`);
