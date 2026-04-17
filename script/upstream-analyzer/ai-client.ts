@@ -47,6 +47,10 @@ function stringifyBody(raw: unknown): string {
   }
 }
 
+function isProviderSelectionFailure(body: string): boolean {
+  return /no allowed providers are available for the selected model|no such provider/i.test(body)
+}
+
 function classifyError(err: unknown): ProviderFailureInfo {
   // APICallError.isInstance is the SDK-supported cross-realm check; plain
   // `instanceof` can miss errors constructed by a different copy of the
@@ -54,6 +58,9 @@ function classifyError(err: unknown): ProviderFailureInfo {
   if (APICallError.isInstance(err)) {
     const status = err.statusCode ?? 0
     const body = stringifyBody(err.responseBody ?? err.message)
+    if (isProviderSelectionFailure(body)) {
+      return { retriable: true, reason: `provider selection ${body.slice(0, 200)}` }
+    }
     if (status === 429) return { retriable: true, reason: `429 ${body.slice(0, 200)}` }
     if (status === 402) return { retriable: true, reason: `402 ${body.slice(0, 200)}` }
     if (status === 403 && /quota|rate|exceed/i.test(body)) {
@@ -64,7 +71,11 @@ function classifyError(err: unknown): ProviderFailureInfo {
     }
     return { retriable: false, reason: `${status} ${body.slice(0, 200)}` }
   }
-  return { retriable: false, reason: String(err) }
+  const message = String(err)
+  if (isProviderSelectionFailure(message)) {
+    return { retriable: true, reason: `provider selection ${message.slice(0, 200)}` }
+  }
+  return { retriable: false, reason: message }
 }
 
 async function callWithoutTools<TObject>(
