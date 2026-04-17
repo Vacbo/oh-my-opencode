@@ -4,7 +4,12 @@ import { buildAllBatches, pushBatches } from "./batch-builder"
 import type { BatchResult } from "./batch-builder"
 import { applyVerificationsToClassifications, verifySlopCommits } from "./slop-verifier"
 import { classifyCommitsSequentially } from "./commit-classifier"
-import { ensureUpstreamRemote, listCommitsInRange, tagExists } from "./git-inspector"
+import {
+  ensureUpstreamRemote,
+  listCommitsInRange,
+  resetWorkingTree,
+  tagExists,
+} from "./git-inspector"
 import { loadAllPrompts } from "./prompt-loader"
 import { synthesizeRelease } from "./release-synthesizer"
 import type {
@@ -45,8 +50,13 @@ async function runPass1Classify(
     logProgress("pass1", "no commits in range, nothing to do")
     return []
   }
-  return classifyCommitsSequentially(commits, systemPrompt, config.modelClassify, (i, n, c) => {
-    logProgress("pass1", `${i}/${n} ${c.shortSha} => ${c.verdict}`)
+  return classifyCommitsSequentially({
+    commits,
+    systemPrompt,
+    model: config.modelClassify,
+    onProgress: async (i, n, classification) => {
+      logProgress("pass1", `${i}/${n} ${classification.shortSha} => ${classification.verdict}`)
+    },
   })
 }
 
@@ -90,6 +100,8 @@ async function runBatchBuilding(
   config: AnalyzerConfig,
   classifications: CommitClassification[],
 ): Promise<BatchResult[]> {
+  logProgress("batches", "resetting working tree before checkout")
+  await resetWorkingTree()
   logProgress("batches", "building good / review / slop branches")
   const results = await buildAllBatches({
     fromTag: config.fromTag,
@@ -129,17 +141,30 @@ export interface PipelineResult extends PipelineOutput {
 }
 
 export async function runPipeline(options: PipelineRunOptions): Promise<PipelineResult> {
+  const { outputDir } = options.config
   const prompts = await loadAllPrompts()
   await prepareUpstreamRange(options.config)
 
+  // Persist after every pass so partial progress survives any downstream
+  // failure. The CI workflow uploads outputDir unconditionally, so even a
+  // pipeline crash produces useful post-mortem artifacts.
   const initialClassifications = await runPass1Classify(options.config, prompts.commitClassify)
+  await writeArtifact(outputDir, "classifications.initial.json", initialClassifications)
+
   const { verifications, final } = await runPass2Verify(
     options.config,
     initialClassifications,
     prompts.slopVerify,
   )
+  await writeArtifact(outputDir, "verifications.json", verifications)
+  await writeArtifact(outputDir, "classifications.json", final)
+
   const synthesis = await runPass3Synthesize(options.config, final, prompts.releaseSynthesis)
+  await writeArtifact(outputDir, "synthesis.json", synthesis)
+
   const batches = await runBatchBuilding(options.config, final)
+  await writeArtifact(outputDir, "batches.json", batches)
+
   await pushIfRequested(batches, options.pushBranches)
 
   const result: PipelineResult = {
@@ -150,11 +175,6 @@ export async function runPipeline(options: PipelineRunOptions): Promise<Pipeline
     batches,
   }
 
-  await writeArtifact(options.config.outputDir, "classifications.json", final)
-  await writeArtifact(options.config.outputDir, "verifications.json", verifications)
-  await writeArtifact(options.config.outputDir, "synthesis.json", synthesis)
-  await writeArtifact(options.config.outputDir, "batches.json", batches)
-  await writeArtifact(options.config.outputDir, "pipeline-result.json", result)
-
+  await writeArtifact(outputDir, "pipeline-result.json", result)
   return result
 }
