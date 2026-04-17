@@ -23,12 +23,27 @@ export class RateLimiter {
   }
 }
 
-const limiters = new Map<string, RateLimiter>()
+interface CachedLimiter {
+  limiter: RateLimiter
+  requestsPerMinute: number
+}
+
+const limiters = new Map<string, CachedLimiter>()
 
 export function getLimiter(key: string, requestsPerMinute: number): RateLimiter {
   const existing = limiters.get(key)
-  if (existing) return existing
-  const created = new RateLimiter({ requestsPerMinute })
-  limiters.set(key, created)
-  return created
+  if (existing) {
+    // Guard against silently returning a limiter configured with a different
+    // rate. Today all call sites use fixed per-provider rates, but if that
+    // ever changes we want a loud failure rather than mysterious throttling.
+    if (existing.requestsPerMinute !== requestsPerMinute) {
+      throw new Error(
+        `RateLimiter cache mismatch for ${key}: cached ${existing.requestsPerMinute} rpm, requested ${requestsPerMinute} rpm`,
+      )
+    }
+    return existing.limiter
+  }
+  const limiter = new RateLimiter({ requestsPerMinute })
+  limiters.set(key, { limiter, requestsPerMinute })
+  return limiter
 }

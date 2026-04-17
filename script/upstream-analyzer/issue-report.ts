@@ -227,7 +227,7 @@ export function buildIssueBody(input: IssueReportInput): string {
 }
 
 export function buildIssueLabels(synthesis: SynthesisResult, toTag: string): string[] {
-  const recommendationLabel = `upstream:${synthesis.recommendation.toLowerCase().replace("_", "-")}`
+  const recommendationLabel = `upstream:${synthesis.recommendation.toLowerCase().replace(/_/g, "-")}`
   const tagLabel = `upstream-tag:${toTag}`
   return ["cost-benefit", "upstream-review", recommendationLabel, tagLabel]
 }

@@ -1,0 +1,199 @@
+{
+  "version": "1.0.0",
+  "lastScanned": 1776055190231,
+  "projectRoot": "/Users/vacbo/Documents/Projects/oh-my-opencode-fork-sync",
+  "techStack": {
+    "languages": [
+      {
+        "name": "JavaScript/TypeScript",
+        "version": null,
+        "confidence": "high",
+        "markers": [
+          "package.json"
+        ]
+      },
+      {
+        "name": "TypeScript",
+        "version": null,
+        "confidence": "high",
+        "markers": [
+          "tsconfig.json"
+        ]
+      }
+    ],
+    "frameworks": [],
+    "packageManager": "npm",
+    "runtime": null
+  },
+  "build": {
+    "buildCommand": "npm run build",
+    "testCommand": "npm test",
+    "lintCommand": null,
+    "devCommand": null,
+    "scripts": {
+      "build": "bun build src/index.ts --outdir dist --target bun --format esm --external @ast-grep/napi && tsc --emitDeclarationOnly && bun build src/cli/index.ts --outdir dist/cli --target bun --format esm --external @ast-grep/napi && bun run build:schema",
+      "build:all": "bun run build && bun run build:binaries",
+      "build:binaries": "bun run script/build-binaries.ts",
+      "build:schema": "bun run script/build-schema.ts",
+      "build:model-capabilities": "bun run script/build-model-capabilities.ts",
+      "clean": "rm -rf dist",
+      "prepare": "bun run build",
+      "postinstall": "node postinstall.mjs",
+      "prepublishOnly": "bun run clean && bun run build",
+      "test:model-capabilities": "bun test src/shared/model-capability-aliases.test.ts src/shared/model-capability-guardrails.test.ts src/shared/model-capabilities.test.ts src/cli/doctor/checks/model-resolution.test.ts --bail",
+      "typecheck": "tsc --noEmit",
+      "test": "bun test"
+    }
+  },
+  "conventions": {
+    "namingStyle": "camelCase",
+    "importStyle": "ES modules",
+    "testPattern": null,
+    "fileOrganization": "feature-based"
+  },
+  "structure": {
+    "isMonorepo": false,
+    "workspaces": [],
+    "mainDirectories": [
+      "assets",
+      "bin",
+      "docs",
+      "src",
+      "tests"
+    ],
+    "gitBranches": {
+      "defaultBranch": "dev",
+      "branchingStrategy": null
+    }
+  },
+  "customNotes": [],
+  "directoryMap": {
+    "assets": {
+      "path": "assets",
+      "purpose": "Static assets",
+      "fileCount": 1,
+      "lastAccessed": 1776055190216,
+      "keyFiles": [
+        "oh-my-opencode.schema.json"
+      ]
+    },
+    "bin": {
+      "path": "bin",
+      "purpose": "Executable scripts",
+      "fileCount": 4,
+      "lastAccessed": 1776055190216,
+      "keyFiles": [
+        "oh-my-opencode.js",
+        "platform.d.ts",
+        "platform.js",
+        "platform.test.ts"
+      ]
+    },
+    "dist": {
+      "path": "dist",
+      "purpose": "Distribution/build output",
+      "fileCount": 11,
+      "lastAccessed": 1776055190221,
+      "keyFiles": [
+        "create-hooks.d.ts",
+        "create-managers.d.ts",
+        "create-runtime-tmux-config.d.ts",
+        "create-tools.d.ts",
+        "index.d.ts"
+      ]
+    },
+    "docs": {
+      "path": "docs",
+      "purpose": "Documentation",
+      "fileCount": 2,
+      "lastAccessed": 1776055190221,
+      "keyFiles": [
+        "manifesto.md",
+        "model-capabilities-maintenance.md"
+      ]
+    },
+    "packages": {
+      "path": "packages",
+      "purpose": null,
+      "fileCount": 0,
+      "lastAccessed": 1776055190221,
+      "keyFiles": []
+    },
+    "script": {
+      "path": "script",
+      "purpose": null,
+      "fileCount": 11,
+      "lastAccessed": 1776055190222,
+      "keyFiles": [
+        "build-binaries.test.ts",
+        "build-binaries.ts",
+        "build-model-capabilities.ts",
+        "build-schema-document.ts",
+        "build-schema.test.ts"
+      ]
+    },
+    "signatures": {
+      "path": "signatures",
+      "purpose": null,
+      "fileCount": 1,
+      "lastAccessed": 1776055190222,
+      "keyFiles": [
+        "cla.json"
+      ]
+    },
+    "src": {
+      "path": "src",
+      "purpose": "Source code",
+      "fileCount": 18,
+      "lastAccessed": 1776055190222,
+      "keyFiles": [
+        "AGENTS.md",
+        "create-hooks.ts",
+        "create-managers.test.ts",
+        "create-managers.ts",
+        "create-runtime-tmux-config.test.ts"
+      ]
+    },
+    "tests": {
+      "path": "tests",
+      "purpose": "Test files",
+      "fileCount": 0,
+      "lastAccessed": 1776055190222,
+      "keyFiles": []
+    },
+    "dist/config": {
+      "path": "dist/config",
+      "purpose": "Configuration files",
+      "fileCount": 2,
+      "lastAccessed": 1776055190222,
+      "keyFiles": [
+        "index.d.ts",
+        "schema.d.ts"
+      ]
+    },
+    "docs/examples": {
+      "path": "docs/examples",
+      "purpose": "Example code",
+      "fileCount": 3,
+      "lastAccessed": 1776055190223,
+      "keyFiles": [
+        "coding-focused.jsonc",
+        "default.jsonc",
+        "planning-focused.jsonc"
+      ]
+    },
+    "src/config": {
+      "path": "src/config",
+      "purpose": "Configuration files",
+      "fileCount": 4,
+      "lastAccessed": 1776055190223,
+      "keyFiles": [
+        "AGENTS.md",
+        "index.ts",
+        "schema.test.ts"
+      ]
+    }
+  },
+  "hotPaths": [],
+  "userDirectives": []
+}

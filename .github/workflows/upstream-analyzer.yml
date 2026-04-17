@@ -1,10 +1,17 @@
 name: Upstream Analyzer
 
 # AI-powered cost-benefit review of an upstream release window.
-# Pipeline (3 passes):
-#   1. Per-commit classification (GOOD / NEEDS_REVIEW / SLOP) via gpt-4.1-mini
-#   2. Slop verification of SLOP candidates via gpt-5-mini (stronger reasoning)
-#   3. Release synthesis via gpt-4.1 (final recommendation)
+#
+# Pipeline (3 passes, each with its own provider:model chain for fallback):
+#   1. Per-commit classification (GOOD / NEEDS_REVIEW / SLOP)
+#   2. Slop verification of SLOP candidates (deeper reasoning)
+#   3. Release synthesis (final recommendation)
+#
+# Chain default shape: provider:model[,provider:model]...
+# Example: github:openai/gpt-4.1-mini,openrouter:qwen/qwen3-coder:free
+# Providers: github (models.github.ai), openrouter (openrouter.ai),
+#            nvidia (integrate.api.nvidia.com). All OpenAI-compat via
+#            @ai-sdk/openai-compatible. Override any chain at dispatch.
 #
 # Output:
 #   - One issue with the full cost-benefit report
@@ -223,7 +230,7 @@ jobs:
 
                 const labels = [
                   'upstream-sync',
-                  `batch:${spec.batch.toLowerCase().replace('_', '-')}`,
+                  `batch:${spec.batch.toLowerCase().replaceAll('_', '-')}`,
                   `upstream-tag:${process.env.TO_TAG}`,
                 ];
                 await github.rest.issues.addLabels({

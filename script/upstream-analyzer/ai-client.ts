@@ -27,16 +27,29 @@ interface ProviderFailureInfo {
   reason: string
 }
 
+function stringifyBody(raw: unknown): string {
+  if (typeof raw === "string") return raw
+  if (raw === null || raw === undefined) return ""
+  try {
+    return JSON.stringify(raw)
+  } catch {
+    return String(raw)
+  }
+}
+
 function classifyError(err: unknown): ProviderFailureInfo {
-  if (err instanceof APICallError) {
+  // APICallError.isInstance is the SDK-supported cross-realm check; plain
+  // `instanceof` can miss errors constructed by a different copy of the
+  // package (e.g., when multiple provider plugins bundle their own).
+  if (APICallError.isInstance(err)) {
     const status = err.statusCode ?? 0
-    const body = err.responseBody ?? err.message ?? ""
+    const body = stringifyBody(err.responseBody ?? err.message)
     if (status === 429) return { retriable: true, reason: `429 ${body.slice(0, 200)}` }
     if (status === 402) return { retriable: true, reason: `402 ${body.slice(0, 200)}` }
     if (status === 403 && /quota|rate|exceed/i.test(body)) {
       return { retriable: true, reason: `403 quota ${body.slice(0, 200)}` }
     }
-    if (status === 400 && /context|too[_ -]?long|maximum\s+context/i.test(body)) {
+    if (status === 400 && /context[_ -]?length|too[_ -]?long|maximum\s+context/i.test(body)) {
       return { retriable: true, reason: `400 context ${body.slice(0, 200)}` }
     }
     return { retriable: false, reason: `${status} ${body.slice(0, 200)}` }

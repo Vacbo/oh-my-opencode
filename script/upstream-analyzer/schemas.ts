@@ -35,7 +35,7 @@ export const releaseSynthesisSchema = z.object({
     .describe("Overall merge recommendation"),
   confidence: z.enum(["high", "medium", "low"]),
   summary: z.string().min(1).max(2000).describe("3-5 sentence plain-English verdict"),
-  slop_ratio_percent: z.number().min(0).max(100),
+  slop_ratio_percent: z.number().int().min(0).max(100),
   breaking_changes: z.array(breakingChangeSchema),
   dependency_changes: z.array(z.string().min(1).max(300)),
   architecture_drift: z.array(z.string().min(1).max(300)),
