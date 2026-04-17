@@ -1,14 +1,51 @@
+import { generateStructured } from "./ai-client"
 import { getCommitDiff } from "./git-inspector"
-import { inferJson } from "./github-models-client"
-import { RateLimiter } from "./throttle"
-import type { CommitClassification, CommitMeta, CommitVerdict } from "./types"
+import { commitVerdictSchema } from "./schemas"
+import { CLASSIFIER_TOOLS } from "./tools"
+import type { ChainEntry } from "./providers"
+import type {
+  CommitClassification,
+  CommitMeta,
+  CommitVerdict,
+} from "./types"
 
-const MAX_TOKENS_OUT = 512
-// Copilot Student / Pro tier caps low-tier models at 15 req/min. Stay
-// below that so pass 1 does not cliff-edge into 429s mid-run.
-const DEFAULT_REQUESTS_PER_MINUTE = 12
+const MAX_OUTPUT_TOKENS = 768
+const DEFAULT_DIFF_BUDGET = 16000
+const MAX_PRIOR_CONTEXT = 8
 
-function buildUserPrompt(commit: CommitMeta, diff: string): string {
+export interface PriorVerdictSummary {
+  shortSha: string
+  subject: string
+  verdict: CommitVerdict
+  reason: string
+}
+
+export interface ClassifyBatchOptions {
+  commits: CommitMeta[]
+  systemPrompt: string
+  chain: ChainEntry[]
+  onProgress?: (index: number, total: number, classification: CommitClassification) => void
+  onProviderFallback?: (args: { failed: ChainEntry; next: ChainEntry; reason: string }) => void
+}
+
+function renderPriorContext(prior: PriorVerdictSummary[]): string {
+  if (prior.length === 0) return ""
+  const trimmed = prior.slice(-MAX_PRIOR_CONTEXT)
+  const lines = trimmed.map(
+    (entry) => `- ${entry.shortSha} [${entry.verdict}] ${entry.subject} :: ${entry.reason}`,
+  )
+  return [
+    "",
+    "## Recent classifications in this release (for cross-commit awareness)",
+    "",
+    ...lines,
+    "",
+    "Use this context only to spot patterns (e.g., 'this is part of a pointless rename spree').",
+    "Do NOT copy a neighbor's verdict mechanically; judge each commit on its own merits.",
+  ].join("\n")
+}
+
+function buildUserPrompt(commit: CommitMeta, diff: string, prior: PriorVerdictSummary[]): string {
   return [
     `Commit: ${commit.shortSha}`,
     `Author: ${commit.author}`,
@@ -17,27 +54,8 @@ function buildUserPrompt(commit: CommitMeta, diff: string): string {
     "",
     "Full diff:",
     diff,
+    renderPriorContext(prior),
   ].join("\n")
-}
-
-function normalizeVerdict(raw: unknown): CommitVerdict {
-  if (raw === "GOOD" || raw === "NEEDS_REVIEW" || raw === "SLOP") return raw
-  return "NEEDS_REVIEW"
-}
-
-function normalizeConfidence(raw: unknown): "high" | "medium" | "low" {
-  if (raw === "high" || raw === "medium" || raw === "low") return raw
-  return "medium"
-}
-
-function normalizeReason(raw: unknown): string {
-  if (typeof raw !== "string" || !raw.trim()) return "Model did not return a reason"
-  return raw.trim()
-}
-
-function normalizeSlopSignals(raw: unknown): string[] {
-  if (!Array.isArray(raw)) return []
-  return raw.filter((x): x is string => typeof x === "string")
 }
 
 function fallbackClassification(commit: CommitMeta, reason: string): CommitClassification {
@@ -52,63 +70,67 @@ function fallbackClassification(commit: CommitMeta, reason: string): CommitClass
   }
 }
 
-export async function classifyCommit(
+async function classifyOne(
   commit: CommitMeta,
   systemPrompt: string,
-  model: string,
+  chain: ChainEntry[],
+  prior: PriorVerdictSummary[],
+  onProviderFallback?: ClassifyBatchOptions["onProviderFallback"],
 ): Promise<CommitClassification> {
-  const diff = await getCommitDiff(commit.sha)
+  const diff = await getCommitDiff(commit.sha, DEFAULT_DIFF_BUDGET)
 
-  let parsed: unknown
   try {
-    const result = await inferJson({
-      model,
+    const result = await generateStructured({
+      chain,
+      schema: commitVerdictSchema,
+      schemaName: "CommitVerdict",
+      schemaDescription: "Structured verdict for a single upstream commit",
       systemPrompt,
-      userPrompt: buildUserPrompt(commit, diff),
-      maxTokens: MAX_TOKENS_OUT,
+      userPrompt: buildUserPrompt(commit, diff, prior),
+      tools: CLASSIFIER_TOOLS,
+      maxOutputTokens: MAX_OUTPUT_TOKENS,
       temperature: 0.1,
+      onProviderFallback,
     })
-    parsed = result.parsed
+
+    return {
+      sha: commit.sha,
+      shortSha: commit.shortSha,
+      subject: commit.subject,
+      verdict: result.object.verdict,
+      confidence: result.object.confidence,
+      reason: result.object.reason,
+      slopSignals: result.object.slop_signals,
+    }
   } catch (cause) {
     return fallbackClassification(commit, (cause as Error).message)
   }
-
-  if (!parsed || typeof parsed !== "object") {
-    return fallbackClassification(commit, "Model returned non-JSON output")
-  }
-
-  const record = parsed as Record<string, unknown>
-  return {
-    sha: commit.sha,
-    shortSha: commit.shortSha,
-    subject: commit.subject,
-    verdict: normalizeVerdict(record.verdict),
-    confidence: normalizeConfidence(record.confidence),
-    reason: normalizeReason(record.reason),
-    slopSignals: normalizeSlopSignals(record.slop_signals),
-  }
-}
-
-export interface ClassifySequentiallyOptions {
-  commits: CommitMeta[]
-  systemPrompt: string
-  model: string
-  requestsPerMinute?: number
-  onProgress?: (index: number, total: number, classification: CommitClassification) => void
 }
 
 export async function classifyCommitsSequentially(
-  options: ClassifySequentiallyOptions,
+  options: ClassifyBatchOptions,
 ): Promise<CommitClassification[]> {
-  const limiter = new RateLimiter({
-    requestsPerMinute: options.requestsPerMinute ?? DEFAULT_REQUESTS_PER_MINUTE,
-  })
   const results: CommitClassification[] = []
+  const priorSummaries: PriorVerdictSummary[] = []
+
   for (let i = 0; i < options.commits.length; i++) {
-    await limiter.throttle()
-    const classification = await classifyCommit(options.commits[i], options.systemPrompt, options.model)
+    const commit = options.commits[i]
+    const classification = await classifyOne(
+      commit,
+      options.systemPrompt,
+      options.chain,
+      priorSummaries,
+      options.onProviderFallback,
+    )
     results.push(classification)
+    priorSummaries.push({
+      shortSha: classification.shortSha,
+      subject: classification.subject,
+      verdict: classification.verdict,
+      reason: classification.reason,
+    })
     options.onProgress?.(i + 1, options.commits.length, classification)
   }
+
   return results
 }

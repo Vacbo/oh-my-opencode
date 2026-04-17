@@ -13,3 +13,7 @@ export type {
 } from "./types"
 export { buildIssueBody, buildIssueTitle, buildIssueLabels, buildBatchPrBody } from "./issue-report"
 export type { BatchResult } from "./batch-builder"
+export { PROVIDERS, availableProviders, parseChainSpec } from "./providers"
+export type { ChainEntry, ProviderName, ProviderConfig } from "./providers"
+export { generateStructured } from "./ai-client"
+export { readFileTool, grepCallersTool, CLASSIFIER_TOOLS } from "./tools"

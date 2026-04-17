@@ -43,14 +43,15 @@ export interface SynthesisResult {
   actionItems: string[]
 }
 
+import type { ChainEntry } from "./providers"
+
 export interface AnalyzerConfig {
   upstreamRepo: string
   fromTag: string
   toTag: string
-  modelClassify: string
-  modelSlopVerify: string
-  modelSlopVerifyFallbacks: string[]
-  modelSynthesis: string
+  classifyChain: ChainEntry[]
+  slopVerifyChain: ChainEntry[]
+  synthesisChain: ChainEntry[]
   repoOwner: string
   repoName: string
   outputDir: string
