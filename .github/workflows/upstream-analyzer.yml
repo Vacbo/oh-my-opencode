@@ -145,7 +145,7 @@ jobs:
           MODEL_SLOP_VERIFY_FALLBACKS: ${{ steps.inputs.outputs.model_slop_verify_fallbacks }}
           MODEL_SYNTHESIS: ${{ steps.inputs.outputs.model_synthesis }}
           PUSH_BRANCHES: ${{ steps.inputs.outputs.push_branches }}
-          OUTPUT_DIR: .analyzer-output
+          OUTPUT_DIR: ${{ runner.temp }}/analyzer-output
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: bun run script/upstream-analyzer/run.ts
 
@@ -154,18 +154,22 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: analyzer-output-${{ steps.inputs.outputs.to_tag }}
-          path: .analyzer-output/
+          path: ${{ runner.temp }}/analyzer-output/
           retention-days: 30
 
       - name: Create analysis issue
         id: issue
         uses: actions/github-script@v7
+        env:
+          OUTPUT_DIR: ${{ runner.temp }}/analyzer-output
         with:
           script: |
             const fs = require('node:fs/promises');
-            const title = (await fs.readFile('.analyzer-output/issue-title.txt', 'utf8')).trim();
-            const body = await fs.readFile('.analyzer-output/issue-body.md', 'utf8');
-            const labels = JSON.parse(await fs.readFile('.analyzer-output/issue-labels.json', 'utf8'));
+            const path = require('node:path');
+            const outputDir = process.env.OUTPUT_DIR;
+            const title = (await fs.readFile(path.join(outputDir, 'issue-title.txt'), 'utf8')).trim();
+            const body = await fs.readFile(path.join(outputDir, 'issue-body.md'), 'utf8');
+            const labels = JSON.parse(await fs.readFile(path.join(outputDir, 'issue-labels.json'), 'utf8'));
 
             const response = await github.rest.issues.create({
               owner: context.repo.owner,
@@ -183,10 +187,13 @@ jobs:
         env:
           ISSUE_NUMBER: ${{ steps.issue.outputs.issue_number }}
           TO_TAG: ${{ steps.inputs.outputs.to_tag }}
+          OUTPUT_DIR: ${{ runner.temp }}/analyzer-output
         with:
           script: |
             const fs = require('node:fs/promises');
-            const specs = JSON.parse(await fs.readFile('.analyzer-output/batch-pr-specs.json', 'utf8'));
+            const path = require('node:path');
+            const outputDir = process.env.OUTPUT_DIR;
+            const specs = JSON.parse(await fs.readFile(path.join(outputDir, 'batch-pr-specs.json'), 'utf8'));
             const issueNumber = Number(process.env.ISSUE_NUMBER);
 
             for (const spec of specs) {
