@@ -1,13 +1,15 @@
 import { availableProviders, parseChainSpec, PROVIDERS, type ChainEntry } from "./providers"
 import type { AnalyzerConfig } from "./types"
 
-// Chain ordering: strongest free model first, unlimited-daily provider as
-// rate-limit fallback, quota-limited provider only as last resort.
-// OpenRouter free tier offers 1000 req/day with $10+ credits and carries
-// the best free models (nemotron-120b, qwen3-coder). NVIDIA NIM has a
-// 40-rpm limit but effectively unlimited daily capacity, so it absorbs
-// bursts after OpenRouter rate-limits. GitHub Models has tight daily caps
-// (150 rpd low-tier, 50 rpd high-tier) so it sits at the end as safety net.
+// Chain ordering: strongest free model first, unlimited-daily provider
+// next, quota-limited provider last. Fallback triggers on any retriable
+// failure (429 rate limit, 402 credit, 403 quota, 400 context) as defined
+// in ai-client classifyError(). Per-provider rate caps live in providers.ts
+// (PROVIDERS.<name>.rateLimitPerMinute) -- see that file for the source of
+// truth on throttling. The rationale for ordering is that OpenRouter free
+// hosts the strongest free models (nemotron-120b, qwen3-coder-480b) but
+// has a daily cap, NVIDIA NIM has generous rate-limited capacity with
+// no meaningful daily cap, and GitHub Models has the tightest daily caps.
 const DEFAULT_CLASSIFY_CHAIN =
   "openrouter:qwen/qwen3-coder:free,nvidia:nvidia/llama-3.3-nemotron-super-49b-v1,github:openai/gpt-4.1-mini"
 
