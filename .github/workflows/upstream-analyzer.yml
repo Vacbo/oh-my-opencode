@@ -48,17 +48,17 @@ on:
       classify_chain:
         description: "Comma-separated provider:model chain for pass 1 (per-commit classify)"
         required: false
-        default: "github:openai/gpt-4.1-mini,openrouter:qwen/qwen3-coder:free,nvidia:nvidia/llama-3.3-nemotron-super-49b-v1"
+        default: "openrouter:qwen/qwen3-coder:free,nvidia:nvidia/llama-3.3-nemotron-super-49b-v1,github:openai/gpt-4.1-mini"
         type: string
       slop_verify_chain:
         description: "Comma-separated provider:model chain for pass 2 (slop verification)"
         required: false
-        default: "nvidia:nvidia/llama-3.3-nemotron-super-49b-v1,openrouter:nvidia/nemotron-3-super-120b-a12b:free,github:openai/gpt-4.1"
+        default: "openrouter:nvidia/nemotron-3-super-120b-a12b:free,nvidia:nvidia/llama-3.3-nemotron-super-49b-v1,github:openai/gpt-4.1"
         type: string
       synthesis_chain:
         description: "Comma-separated provider:model chain for pass 3 (release synthesis)"
         required: false
-        default: "openrouter:qwen/qwen3-next-80b-a3b-instruct:free,nvidia:nvidia/llama-3.3-nemotron-super-49b-v1,github:openai/gpt-4.1"
+        default: "openrouter:nvidia/nemotron-3-super-120b-a12b:free,nvidia:nvidia/llama-3.3-nemotron-super-49b-v1,github:openai/gpt-4.1"
         type: string
 
 concurrency:
@@ -100,9 +100,9 @@ jobs:
           TO_TAG="${INPUT_TO:-$DISPATCH_TO}"
           UPSTREAM_REPO="${INPUT_REPO:-${DISPATCH_REPO:-code-yeongyu/oh-my-openagent}}"
           PUSH_BRANCHES="${INPUT_PUSH:-true}"
-          CLASSIFY_CHAIN_DEFAULT="github:openai/gpt-4.1-mini,openrouter:qwen/qwen3-coder:free,nvidia:nvidia/llama-3.3-nemotron-super-49b-v1"
-          SLOP_VERIFY_CHAIN_DEFAULT="nvidia:nvidia/llama-3.3-nemotron-super-49b-v1,openrouter:nvidia/nemotron-3-super-120b-a12b:free,github:openai/gpt-4.1"
-          SYNTHESIS_CHAIN_DEFAULT="openrouter:qwen/qwen3-next-80b-a3b-instruct:free,nvidia:nvidia/llama-3.3-nemotron-super-49b-v1,github:openai/gpt-4.1"
+          CLASSIFY_CHAIN_DEFAULT="openrouter:qwen/qwen3-coder:free,nvidia:nvidia/llama-3.3-nemotron-super-49b-v1,github:openai/gpt-4.1-mini"
+          SLOP_VERIFY_CHAIN_DEFAULT="openrouter:nvidia/nemotron-3-super-120b-a12b:free,nvidia:nvidia/llama-3.3-nemotron-super-49b-v1,github:openai/gpt-4.1"
+          SYNTHESIS_CHAIN_DEFAULT="openrouter:nvidia/nemotron-3-super-120b-a12b:free,nvidia:nvidia/llama-3.3-nemotron-super-49b-v1,github:openai/gpt-4.1"
           CLASSIFY_CHAIN="${INPUT_CLASSIFY_CHAIN:-$CLASSIFY_CHAIN_DEFAULT}"
           SLOP_VERIFY_CHAIN="${INPUT_SLOP_VERIFY_CHAIN:-$SLOP_VERIFY_CHAIN_DEFAULT}"
           SYNTHESIS_CHAIN="${INPUT_SYNTHESIS_CHAIN:-$SYNTHESIS_CHAIN_DEFAULT}"
