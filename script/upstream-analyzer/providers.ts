@@ -70,8 +70,9 @@ export function parseChainSpec(raw: string): ChainEntry[] {
     .map((entry) => entry.trim())
     .filter((entry) => entry.length > 0)
     .map((entry) => {
-      const [provider, ...rest] = entry.split(":")
-      const modelId = rest.join(":")
+      const [rawProvider, ...rest] = entry.split(":")
+      const provider = rawProvider.trim()
+      const modelId = rest.join(":").trim()
       if (!isProviderName(provider) || !modelId) {
         throw new Error(`Invalid chain entry "${entry}" (expected "provider:modelId")`)
       }

@@ -1,4 +1,11 @@
-import { generateObject, APICallError, type ToolSet } from "ai"
+import {
+  APICallError,
+  generateObject,
+  generateText,
+  Output,
+  stepCountIs,
+  type ToolSet,
+} from "ai"
 import type { ZodType } from "zod"
 import { PROVIDERS, buildLanguageModel, type ChainEntry } from "./providers"
 import { getLimiter } from "./throttle"
@@ -13,6 +20,7 @@ export interface GenerateOptions<TObject> {
   tools?: ToolSet
   maxOutputTokens: number
   temperature?: number
+  maxSteps?: number
   onProviderFallback?: (args: { failed: ChainEntry; next: ChainEntry; reason: string }) => void
 }
 
@@ -26,6 +34,8 @@ interface ProviderFailureInfo {
   retriable: boolean
   reason: string
 }
+
+const DEFAULT_MAX_STEPS = 4
 
 function stringifyBody(raw: unknown): string {
   if (typeof raw === "string") return raw
@@ -57,12 +67,65 @@ function classifyError(err: unknown): ProviderFailureInfo {
   return { retriable: false, reason: String(err) }
 }
 
+async function callWithoutTools<TObject>(
+  entry: ChainEntry,
+  options: GenerateOptions<TObject>,
+): Promise<TObject> {
+  const model = buildLanguageModel(entry.provider, entry.modelId)
+  const result = await generateObject({
+    model,
+    system: options.systemPrompt,
+    prompt: options.userPrompt,
+    schema: options.schema,
+    schemaName: options.schemaName,
+    schemaDescription: options.schemaDescription,
+    maxOutputTokens: options.maxOutputTokens,
+    temperature: options.temperature,
+  })
+  return result.object as TObject
+}
+
+async function callWithTools<TObject>(
+  entry: ChainEntry,
+  options: GenerateOptions<TObject>,
+): Promise<TObject> {
+  // AI SDK v6: generateObject does NOT accept tools. For structured output
+  // combined with a tool-calling loop, use generateText with
+  // experimental_output (Output.object) and stopWhen(stepCountIs(N)).
+  // The model may invoke tools across multiple turns, and the final step's
+  // structured output is surfaced via result.experimental_output.
+  const model = buildLanguageModel(entry.provider, entry.modelId)
+  const result = await generateText({
+    model,
+    system: options.systemPrompt,
+    prompt: options.userPrompt,
+    tools: options.tools,
+    stopWhen: stepCountIs(options.maxSteps ?? DEFAULT_MAX_STEPS),
+    experimental_output: Output.object({
+      schema: options.schema,
+      name: options.schemaName,
+      description: options.schemaDescription,
+    }),
+    maxOutputTokens: options.maxOutputTokens,
+    temperature: options.temperature,
+  })
+  const structured = result.experimental_output as TObject | undefined
+  if (structured === undefined) {
+    throw new Error(
+      "generateText returned no structured output; model may have stopped without emitting the final object",
+    )
+  }
+  return structured
+}
+
 export async function generateStructured<TObject>(
   options: GenerateOptions<TObject>,
 ): Promise<GenerateResult<TObject>> {
   if (options.chain.length === 0) {
     throw new Error("generateStructured: empty provider chain")
   }
+
+  const hasTools = options.tools !== undefined && Object.keys(options.tools).length > 0
 
   let lastError: unknown
   for (let attempt = 0; attempt < options.chain.length; attempt++) {
@@ -72,19 +135,10 @@ export async function generateStructured<TObject>(
     await limiter.throttle()
 
     try {
-      const model = buildLanguageModel(entry.provider, entry.modelId)
-      const result = await generateObject({
-        model,
-        system: options.systemPrompt,
-        prompt: options.userPrompt,
-        schema: options.schema,
-        schemaName: options.schemaName,
-        schemaDescription: options.schemaDescription,
-        tools: options.tools,
-        maxOutputTokens: options.maxOutputTokens,
-        temperature: options.temperature,
-      })
-      return { object: result.object as TObject, usedEntry: entry, attempts: attempt + 1 }
+      const object = hasTools
+        ? await callWithTools<TObject>(entry, options)
+        : await callWithoutTools<TObject>(entry, options)
+      return { object, usedEntry: entry, attempts: attempt + 1 }
     } catch (err) {
       lastError = err
       const { retriable, reason } = classifyError(err)
