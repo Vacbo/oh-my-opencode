@@ -17,6 +17,7 @@ interface WorkflowArtifacts {
     title: string
     body: string
     skipped: boolean
+    pushOutcome: string
   }>
 }
 
@@ -31,13 +32,18 @@ function buildWorkflowArtifacts(result: PipelineResult): WorkflowArtifacts {
   })
   const issueLabels = buildIssueLabels(result.synthesis, result.config.toTag)
 
-  const batchPrSpecs = result.batches.map((batch) => ({
-    batch: batch.batch,
-    branchName: batch.branchName,
-    title: `[${batch.batch}] Upstream sync ${result.config.fromTag} → ${result.config.toTag}`,
-    body: buildBatchPrBody(batch, result.commits, null),
-    skipped: batch.skipped || batch.appliedCommits.length === 0,
-  }))
+  const batchPrSpecs = result.batches.map((batch) => {
+    const pushFailed =
+      batch.pushOutcome !== undefined && batch.pushOutcome !== "ok"
+    return {
+      batch: batch.batch,
+      branchName: batch.branchName,
+      title: `[${batch.batch}] Upstream sync ${result.config.fromTag} → ${result.config.toTag}`,
+      body: buildBatchPrBody(batch, result.commits, null),
+      skipped: batch.skipped || batch.appliedCommits.length === 0 || pushFailed,
+      pushOutcome: batch.pushOutcome ?? "not-pushed",
+    }
+  })
 
   return { issueTitle, issueBody, issueLabels, batchPrSpecs }
 }

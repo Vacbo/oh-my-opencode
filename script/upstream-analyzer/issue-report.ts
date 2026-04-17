@@ -29,18 +29,38 @@ function renderCommitLines(commits: CommitClassification[]): string {
     .join("\n")
 }
 
+function renderBatchNotes(batch: BatchResult | undefined): string {
+  if (!batch || batch.skipped) return ""
+  const notes: string[] = [`Branch: \`${batch.branchName}\``]
+  if (batch.conflictCommits.length > 0) {
+    notes.push(
+      `> ⚠️ ${batch.conflictCommits.length} commit(s) failed to cherry-pick and are NOT in the draft PR.`,
+    )
+  }
+  if (batch.pushOutcome === "blocked-by-workflow-permission") {
+    notes.push(
+      "> 🚫 Push to origin was rejected — `GITHUB_TOKEN` cannot create or modify files under `.github/workflows/`. The batch branch exists only in the workflow runner and was discarded. To merge this batch, run the analyzer with a PAT that has the `workflow` scope, or cherry-pick locally.",
+    )
+  } else if (batch.pushOutcome === "failed") {
+    notes.push("> 🚫 Push to origin failed for an unexpected reason. Check the workflow logs.")
+  }
+  if (batch.workflowTouchingCommits.length > 0) {
+    const shortShas = batch.workflowTouchingCommits.map((sha) => `\`${sha.slice(0, 7)}\``).join(", ")
+    notes.push(
+      `> 📝 ${batch.workflowTouchingCommits.length} commit(s) touch \`.github/workflows/\` and require elevated permissions to sync: ${shortShas}`,
+    )
+  }
+  return `\n${notes.join("\n")}`
+}
+
 function renderBatchSection(
   heading: string,
   description: string,
   commits: CommitClassification[],
   batch: BatchResult | undefined,
 ): string {
-  const conflictNote =
-    batch && batch.conflictCommits.length > 0
-      ? `\n> ⚠️ ${batch.conflictCommits.length} commit(s) failed to cherry-pick and are NOT in the draft PR.`
-      : ""
-  const branchNote = batch && !batch.skipped ? `\nBranch: \`${batch.branchName}\`${conflictNote}` : ""
-  return [`### ${heading}`, `_${description}_`, "", renderCommitLines(commits), branchNote, ""].join("\n")
+  const notes = renderBatchNotes(batch)
+  return [`### ${heading}`, `_${description}_`, "", renderCommitLines(commits), notes, ""].join("\n")
 }
 
 function renderVerifications(verifications: SlopVerification[]): string {

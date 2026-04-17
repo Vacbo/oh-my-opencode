@@ -1,9 +1,11 @@
 import {
+  commitTouchesWorkflow,
   createBranchFromTag,
   cherryPickCommit,
   pushBranch,
   tagExists,
 } from "./git-inspector"
+import type { PushOutcome } from "./git-inspector"
 import type { CommitClassification, CommitVerdict } from "./types"
 
 export interface BatchResult {
@@ -12,7 +14,9 @@ export interface BatchResult {
   baseTag: string
   appliedCommits: string[]
   conflictCommits: string[]
+  workflowTouchingCommits: string[]
   skipped: boolean
+  pushOutcome?: PushOutcome
 }
 
 interface BatchBuilderInput {
@@ -54,6 +58,7 @@ async function buildSingleBatch(
       baseTag: input.fromTag,
       appliedCommits: [],
       conflictCommits: [],
+      workflowTouchingCommits: [],
       skipped: true,
     }
   }
@@ -66,11 +71,18 @@ async function buildSingleBatch(
 
   const applied: string[] = []
   const conflicts: string[] = []
+  const workflowTouching: string[] = []
 
   for (const commit of commits) {
     const status = await cherryPickCommit(commit.sha)
-    if (status === "ok") applied.push(commit.sha)
-    else conflicts.push(commit.sha)
+    if (status === "ok") {
+      applied.push(commit.sha)
+      if (await commitTouchesWorkflow(commit.sha)) {
+        workflowTouching.push(commit.sha)
+      }
+    } else {
+      conflicts.push(commit.sha)
+    }
   }
 
   return {
@@ -79,6 +91,7 @@ async function buildSingleBatch(
     baseTag: input.fromTag,
     appliedCommits: applied,
     conflictCommits: conflicts,
+    workflowTouchingCommits: workflowTouching,
     skipped: false,
   }
 }
@@ -95,6 +108,6 @@ export async function pushBatches(results: BatchResult[]): Promise<void> {
   for (const result of results) {
     if (result.skipped) continue
     if (result.appliedCommits.length === 0) continue
-    await pushBranch(result.branchName)
+    result.pushOutcome = await pushBranch(result.branchName)
   }
 }
