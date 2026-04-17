@@ -1,8 +1,12 @@
 import { getCommitDiff } from "./git-inspector"
 import { inferJson } from "./github-models-client"
+import { RateLimiter } from "./throttle"
 import type { CommitClassification, CommitMeta, CommitVerdict } from "./types"
 
 const MAX_TOKENS_OUT = 512
+// Copilot Student / Pro tier caps low-tier models at 15 req/min. Stay
+// below that so pass 1 does not cliff-edge into 429s mid-run.
+const DEFAULT_REQUESTS_PER_MINUTE = 12
 
 function buildUserPrompt(commit: CommitMeta, diff: string): string {
   return [
@@ -85,17 +89,26 @@ export async function classifyCommit(
   }
 }
 
+export interface ClassifySequentiallyOptions {
+  commits: CommitMeta[]
+  systemPrompt: string
+  model: string
+  requestsPerMinute?: number
+  onProgress?: (index: number, total: number, classification: CommitClassification) => void
+}
+
 export async function classifyCommitsSequentially(
-  commits: CommitMeta[],
-  systemPrompt: string,
-  model: string,
-  onProgress?: (index: number, total: number, classification: CommitClassification) => void,
+  options: ClassifySequentiallyOptions,
 ): Promise<CommitClassification[]> {
+  const limiter = new RateLimiter({
+    requestsPerMinute: options.requestsPerMinute ?? DEFAULT_REQUESTS_PER_MINUTE,
+  })
   const results: CommitClassification[] = []
-  for (let i = 0; i < commits.length; i++) {
-    const classification = await classifyCommit(commits[i], systemPrompt, model)
+  for (let i = 0; i < options.commits.length; i++) {
+    await limiter.throttle()
+    const classification = await classifyCommit(options.commits[i], options.systemPrompt, options.model)
     results.push(classification)
-    onProgress?.(i + 1, commits.length, classification)
+    options.onProgress?.(i + 1, options.commits.length, classification)
   }
   return results
 }

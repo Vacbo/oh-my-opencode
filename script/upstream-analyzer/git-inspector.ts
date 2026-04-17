@@ -48,6 +48,17 @@ export async function getDependencyChanges(fromTag: string, toTag: string): Prom
   return result.text()
 }
 
+export async function resetWorkingTree(): Promise<void> {
+  // `bun install` without --frozen-lockfile may modify bun.lock, which
+  // blocks subsequent `git checkout -b` with "local changes would be
+  // overwritten". Reset discards every uncommitted modification in the
+  // ephemeral CI clone so the batch-build phase starts from a clean slate.
+  // --hard HEAD: throw away tracked file changes. -fdx: remove untracked
+  // files and ignored files (node_modules, .analyzer-output, etc).
+  await $`git reset --hard HEAD`.quiet().nothrow()
+  await $`git clean -fdx -e .analyzer-output`.quiet().nothrow()
+}
+
 export async function createBranchFromTag(branchName: string, baseTag: string): Promise<void> {
   await $`git branch -D ${branchName}`.quiet().nothrow()
   await $`git checkout -b ${branchName} ${baseTag}`.quiet()
