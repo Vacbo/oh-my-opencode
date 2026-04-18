@@ -31,7 +31,6 @@ export function createSkillTool(options: SkillLoadOptions = {}): ToolDefinition 
     const discovered = options.skills
       ? []
       : await (async () => {
-          clearSkillCache()
           return getAllSkills({
             disabledSkills: options?.disabledSkills,
             browserProvider: options?.browserProvider,
