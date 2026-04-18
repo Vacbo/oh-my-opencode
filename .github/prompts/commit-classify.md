@@ -8,6 +8,56 @@ adding information, and tests that assert tautologies.
 
 Your job: protect this fork from absorbing slop. Classify each commit.
 
+## Internal category step (MANDATORY)
+
+Before choosing a verdict, first decide which single category best fits the
+commit. Do this internally even though you will NOT output the category.
+
+Use one of these categories:
+
+- `real_bug_fix` — concrete behavior fix, correctness fix, compatibility fix,
+  security fix, CI/build fix with clear necessity
+- `real_test` — meaningful new test coverage for a real scenario or regression
+- `real_feature` — new capability with real callers or clear user value
+- `refactor_with_clear_value` — simplification, extraction, dead-code removal,
+  or structure change with obvious maintenance/runtime benefit
+- `docs_with_clear_value` — meaningful new documentation, new instructions,
+  real troubleshooting, real translation with substantive user value
+- `translation_sync_with_real_value` — localization work that clearly improves
+  user-facing documentation, not just filler or count churn
+- `refactor_churn` — tiny visibility-only changes, null-guard micro-cleanups,
+  rename-only churn, cleanup with no obvious payoff
+- `docs_churn` — date updates, count updates, comment shuffling, metadata-only
+  doc edits, word-count changes with little new information
+- `comment_churn` — adding/removing comments without improving clarity in a
+  meaningful way
+- `workflow_or_tooling_maze` — workaround-heavy hooks, wrappers, adapters, or
+  automation layers solving a simple problem in an indirect way
+- `minor_visibility_churn` — `export` -> internal, type visibility changes,
+  API surface tweaks without clear functional or architectural benefit
+- `cla_admin` — CLA signatures and similar governance-only admin events
+- `release_version_bump` — release tags, package version bumps, publish prep
+- `date_count_metadata_churn` — generated date updates, count updates,
+  bookkeeping-only metadata churn
+- `governance_noise` — other policy/admin changes with no code/product value
+- `unclear` — truly ambiguous; use only when none of the above fits
+
+Category-to-verdict bias:
+
+- Usually **GOOD**: `real_bug_fix`, `real_test`, `real_feature`,
+  `refactor_with_clear_value`, `docs_with_clear_value`,
+  `translation_sync_with_real_value`
+- Usually **NEEDS_REVIEW**: `unclear`
+- Usually **SLOP**: `refactor_churn`, `docs_churn`, `comment_churn`,
+  `workflow_or_tooling_maze`, `minor_visibility_churn`,
+  `date_count_metadata_churn`
+- Never default to GOOD: `cla_admin`, `release_version_bump`,
+  `governance_noise`
+
+If a commit is mostly administrative noise (CLA, release bump, count/date
+update), do NOT call it GOOD just because it is "necessary." Necessary admin
+work is still noise for this fork's merge-value judgment.
+
 ## Classification
 
 Return exactly one of:
@@ -50,6 +100,13 @@ shows a real external constraint forcing that design.
 When a PR adds "AI review on every edit/save" behavior, default to SLOP.
 That pattern is presumed wasteful, intrusive, and workaround-heavy unless the
 diff proves a hard requirement that cannot be met with a simpler design.
+
+Likewise, default these to NOT GOOD unless the diff proves unusual value:
+- CLA signature commits
+- release/version bump commits
+- generated date churn
+- count-only documentation churn
+- visibility-only refactors (`export` removed, type made internal, etc.)
 
 ## Bias
 

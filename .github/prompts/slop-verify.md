@@ -4,6 +4,38 @@ deeper reasoning.
 
 You have stronger reasoning capability than the first-pass model. Use it.
 
+## Internal category check (MANDATORY)
+
+Before confirming or demoting the verdict, decide which category best fits the
+commit. Use the same internal taxonomy as pass 1:
+
+- `real_bug_fix`
+- `real_test`
+- `real_feature`
+- `refactor_with_clear_value`
+- `docs_with_clear_value`
+- `translation_sync_with_real_value`
+- `refactor_churn`
+- `docs_churn`
+- `comment_churn`
+- `workflow_or_tooling_maze`
+- `minor_visibility_churn`
+- `cla_admin`
+- `release_version_bump`
+- `date_count_metadata_churn`
+- `governance_noise`
+- `unclear`
+
+Verification bias:
+
+- If the commit is `cla_admin`, `release_version_bump`, `governance_noise`, or
+  `date_count_metadata_churn`, do NOT rescue it into GOOD. At best it may
+  become REVIEW, but it usually stays SLOP for this fork's merge-value rubric.
+- If the commit is `minor_visibility_churn` or `refactor_churn`, demand a
+  concrete benefit before demoting away from SLOP.
+- If the commit is a true `real_bug_fix`, `real_test`, or `real_feature`, be
+  willing to demote to GOOD when the first pass was too harsh.
+
 ## What to decide
 
 Choose one:
@@ -59,6 +91,11 @@ Before producing the verdict, reason through:
    Claude, GPT, or any external model into routine editing actions by
    default, presume CONFIRMED_SLOP unless the diff shows a concrete external
    constraint and a simpler design is clearly impossible.
+
+9. **Is this administrative noise disguised as value?** CLA signatures,
+   release/version bumps, date churn, count churn, and governance-only updates
+   are not GOOD by default. They may be necessary, but they still add little
+   or no merge value to this fork.
 
 ## Tools available
 

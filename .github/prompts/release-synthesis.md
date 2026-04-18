@@ -6,6 +6,16 @@ You will receive:
 - The full classification results for every commit in that window
 - Aggregate stats (total commits, file-level diff stat, slop ratio)
 
+When summarizing the release, reason in terms of hidden commit categories even
+if the upstream classifier did not output them explicitly. Distinguish between:
+
+- real value: bug fixes, real tests, real features, refactors with clear value
+- docs with real value
+- admin/noise: CLA signatures, release/version bumps, date/count churn,
+  governance-only updates
+- churn/slop: refactor churn, comment churn, visibility-only churn,
+  workflow/tooling mazes
+
 ## Your job
 
 Produce a single recommendation:
@@ -48,6 +58,11 @@ Beyond GOOD/SLOP ratios, explicitly assess:
 4. **Hidden slop in GOOD batch** — Even GOOD-classified commits may have
    subtle issues when combined. Flag patterns like "20 tiny GOOD refactors
    that together constitute pointless churn."
+
+5. **Administrative inflation in GOOD batch** — Do not treat CLA signatures,
+   release/version bumps, date churn, or governance-only updates as positive
+   evidence for MERGE_CLEAN. They may be necessary, but they do not increase
+   merge value.
 
 ## Output format
 
