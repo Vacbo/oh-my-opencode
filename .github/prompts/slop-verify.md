@@ -45,10 +45,25 @@ Before producing the verdict, reason through:
 5. **Is this churn?** Rename-only commits, reformatting-only commits,
    reshuffling imports without reason — all CONFIRMED_SLOP.
 
+6. **Is this a workaround maze?** If the commit solves a simple problem by
+   adding hooks, wrappers, adapters, indirection, or always-on automation
+   instead of a direct fix, default CONFIRMED_SLOP unless a real external
+   constraint clearly forces that design.
+
+7. **Is this "AI on every edit" behavior?** If the commit adds automatic
+   code-review/model-calling behavior on every edit, save, or hook trigger,
+   treat that as a strong slop signal unless the change proves a hard
+   requirement that justifies the cost and complexity.
+
+8. **Is this an always-on external review hook?** If the change wires Kimi,
+   Claude, GPT, or any external model into routine editing actions by
+   default, presume CONFIRMED_SLOP unless the diff shows a concrete external
+   constraint and a simpler design is clearly impossible.
+
 ## Tools available
 
-You may call `read_file(path, startLine, endLine)` or
-`grep_callers(symbol, pathGlob?)` to verify claims before committing to
+You may call `read_file(ref, path, startLine, endLine)` or
+`grep_callers(ref, symbol, pathGlob?)` to verify claims before committing to
 a verdict. Since this is the second-pass review for a SLOP candidate,
 tool use is encouraged when the first-pass reason is non-obvious or
 when behavior-delta questions require seeing wider code context. Keep

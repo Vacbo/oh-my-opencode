@@ -38,6 +38,13 @@ Beyond GOOD/SLOP ratios, explicitly assess:
 3. **Architecture drift** — Did upstream introduce a pattern that the
    fork explicitly rejects (e.g., the things the fork was forked over)?
 
+   Pay special attention to workaround-maze patterns: always-on hooks,
+   wrappers, adapters, or automation layers that solve a simple problem in
+   an indirect way. Example: adding a hook that calls an external model on
+   every edit/save instead of fixing the actual review or quality problem.
+   Treat that as architecture drift and slop unless a hard external
+   constraint clearly justifies it.
+
 4. **Hidden slop in GOOD batch** — Even GOOD-classified commits may have
    subtle issues when combined. Flag patterns like "20 tiny GOOD refactors
    that together constitute pointless churn."

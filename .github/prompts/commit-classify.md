@@ -33,6 +33,23 @@ Return exactly one of:
   - Renamed symbols with no call-site benefit (churn)
   - "Defensive" try/catch around code that cannot throw
   - Introduces a new dependency for trivial functionality
+  - Solves a simple problem with a workaround maze instead of a direct fix
+  - Adds hooks, wrappers, adapters, or always-on automation with no clear
+    root-cause justification (example: calling an external model on every edit)
+  - Adds complexity whose only apparent purpose is to route around the real
+    problem rather than solve it
+  - Installs or wires an external-model review hook into every edit, save,
+    file change, or routine coding action (for example: auto-calling Kimi,
+    Claude, GPT, or similar on every edit)
+
+Treat workaround-heavy code as a strong slop signal. If the change introduces
+an overcomplicated maze of branching, wrappers, or always-on hooks to solve a
+problem that should have a direct fix, classify it as SLOP unless the diff
+shows a real external constraint forcing that design.
+
+When a PR adds "AI review on every edit/save" behavior, default to SLOP.
+That pattern is presumed wasteful, intrusive, and workaround-heavy unless the
+diff proves a hard requirement that cannot be met with a simpler design.
 
 ## Bias
 
@@ -53,8 +70,9 @@ diffs (docs typos, dep bumps, obvious renames).
   file. Use when the diff touches a function whose wider body or
   neighboring code matters for judgment.
 - `grep_callers(symbol, pathGlob?)` -- search for references to a
-  symbol. Use when the diff renames a function, changes a signature,
-  or removes an export, and you need to verify nothing external breaks.
+  symbol at a specific git revision. Use when the diff renames a function,
+  changes a signature, or removes an export, and you need to verify nothing
+  external breaks.
 
 Keep tool calls surgical: at most 2 per commit, targeted queries, small
 slices. If you start a tool call, always complete the classification
