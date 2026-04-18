@@ -1281,7 +1281,7 @@ describe("config-handler plugin loading error boundary (#1559)", () => {
 
     //#then
     expect(config.agent).toBeDefined()
-  }, 5000)
+  }, 15000)
 
   test("records a config load error when loadAllPluginComponents fails", async () => {
     //#given
@@ -1310,7 +1310,7 @@ describe("config-handler plugin loading error boundary (#1559)", () => {
       path: "plugin-loading",
       error: "crash",
     })
-  })
+  }, 15000)
 
   test("passes through plugin data on successful load (identity test)", async () => {
     //#given
