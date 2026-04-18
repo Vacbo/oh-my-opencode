@@ -1,6 +1,6 @@
 {
   "name": "@vacbo/oh-my-opencode-windows-x64-baseline",
-  "version": "3.17.2",
+  "version": "3.18.0",
   "description": "Platform-specific binary for @vacbo/oh-my-opencode (windows-x64-baseline, no AVX2)",
   "license": "MIT",
   "repository": {
