@@ -165,7 +165,7 @@ describe("transformModelForProvider", () => {
   })
 
   describe("anthropic provider", () => {
-    test("transforms claude-opus-4-6 to claude-opus-4.6", () => {
+    test("preserves hyphenated claude-opus-4-6", () => {
       // #given anthropic provider and claude-opus-4-6 model
       const provider = "anthropic"
       const model = "claude-opus-4-6"
@@ -173,11 +173,11 @@ describe("transformModelForProvider", () => {
       // #when transformModelForProvider is called
       const result = transformModelForProvider(provider, model)
 
-      // #then should transform to claude-opus-4.6
-      expect(result).toBe("claude-opus-4.6")
+      // #then should preserve canonical hyphenated form for config output
+      expect(result).toBe("claude-opus-4-6")
     })
 
-    test("transforms claude-sonnet-4-6 to claude-sonnet-4.6", () => {
+    test("preserves hyphenated claude-sonnet-4-6", () => {
       // #given anthropic provider and claude-sonnet-4-6 model
       const provider = "anthropic"
       const model = "claude-sonnet-4-6"
@@ -185,11 +185,11 @@ describe("transformModelForProvider", () => {
       // #when transformModelForProvider is called
       const result = transformModelForProvider(provider, model)
 
-      // #then should transform to claude-sonnet-4.6
-      expect(result).toBe("claude-sonnet-4.6")
+      // #then should preserve canonical hyphenated form for config output
+      expect(result).toBe("claude-sonnet-4-6")
     })
 
-    test("transforms claude-haiku-4-5 to claude-haiku-4.5", () => {
+    test("preserves hyphenated claude-haiku-4-5", () => {
       // #given anthropic provider and claude-haiku-4-5 model
       const provider = "anthropic"
       const model = "claude-haiku-4-5"
@@ -197,8 +197,8 @@ describe("transformModelForProvider", () => {
       // #when transformModelForProvider is called
       const result = transformModelForProvider(provider, model)
 
-      // #then should transform to claude-haiku-4.5
-      expect(result).toBe("claude-haiku-4.5")
+      // #then should preserve canonical hyphenated form for config output
+      expect(result).toBe("claude-haiku-4-5")
     })
   })
 
@@ -345,7 +345,7 @@ describe("transformModelForProvider", () => {
 
     // #when
     expect(transformModelForProvider).not.toBe(transformSharedModelForProvider)
-    expect(cliResult).toBe("claude-opus-4.6")
+    expect(cliResult).toBe("claude-opus-4-6")
     expect(sharedResult).toBe("claude-opus-4.6")
   })
 })
