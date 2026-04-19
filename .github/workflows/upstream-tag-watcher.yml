@@ -106,7 +106,7 @@ jobs:
 
       - name: Fire repository_dispatch to analyzer
         if: steps.decide.outputs.dispatch == 'true'
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           script: |
             const payload = {
