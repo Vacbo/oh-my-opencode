@@ -15,7 +15,10 @@ concurrency:
   cancel-in-progress: false
 
 permissions:
-  contents: read
+  # `createDispatchEvent` requires `contents: write` on the workflow token.
+  # Without it, every poll fails with HTTP 403 "Resource not accessible by
+  # integration" at the dispatch step. `actions: write` alone is insufficient.
+  contents: write
   actions: write
 
 env:
