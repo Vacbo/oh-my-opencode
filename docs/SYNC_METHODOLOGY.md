@@ -9,15 +9,29 @@ upstream, how fork-only fixes land, how we guard against AI slop, and when we
 publish npm releases. It describes what is already built and what the human
 maintainer still owns.
 
-## 0. DeepWiki is not an MCP
+## 0. Read the diff, not the title
 
-For the record: upstream PR #868 ("feat/deepwiki", merged as `987ae468`) added a
-single line to `README.md` — a [deepwiki.com](https://deepwiki.com) badge
-pointing to the auto-generated wiki for `code-yeongyu/oh-my-openagent`. That is
-the entire content of the PR. There is no DeepWiki MCP server, no tool
-registration, no plugin code. Any suggestion to "install DeepWiki MCP" in this
-fork is unverified and should be treated as speculation until independent
-evidence is produced.
+Commits and PRs mislead at a glance. A branch name like `feat/deepwiki`, a
+label like "integration", or a feature-sounding title suggests one scope; the
+actual diff may be something else entirely. Before classifying, porting,
+rejecting, or citing any upstream commit, read the file list and the line
+counts. Form the judgment from what the commit DOES, not what its title SAYS.
+
+Worked example. Upstream PR #868 ("feat/deepwiki", merged as `987ae468`)
+modifies exactly one file: `README.md`, one line added — a
+[deepwiki.com](https://deepwiki.com) badge pointing to the auto-generated wiki
+for `code-yeongyu/oh-my-openagent`. There is no source code, no MCP server, no
+tool registration, no plugin wiring. A title-only read invites the conclusion
+"DeepWiki integration is shipping in OmO, we should install a DeepWiki MCP in
+this fork." The diff does not support that conclusion. Any proposal leaning on
+PR #868 as evidence for a DeepWiki-shaped capability is unverified until the
+diff itself carries the weight.
+
+The rule generalizes. The analyzer's classifier (§6) scores each commit on
+what its diff contains, not on its title or commit message. Maintainers must
+apply the same discipline manually when reviewing the analyzer's draft PRs —
+especially for the `-good` batch, where a charitable title can smuggle in
+admin-only or churn-only commits that the file-list reveals immediately.
 
 ## 1. Ground truth snapshot
 
