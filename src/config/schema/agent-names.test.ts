@@ -135,6 +135,17 @@ describe("OhMyOpenCodeConfigSchema other disabled_* fields parity", () => {
     expect(result.success).toBe(false)
   })
 
+  test("disabled_agents rejects empty strings", () => {
+    // given
+    const config = { disabled_agents: [""] }
+
+    // when
+    const result = OhMyOpenCodeConfigSchema.safeParse(config)
+
+    // then
+    expect(result.success).toBe(false)
+  })
+
   test("disabled_hooks rejects whitespace-only strings", () => {
     // given
     const config = { disabled_hooks: ["\n"] }
@@ -146,9 +157,53 @@ describe("OhMyOpenCodeConfigSchema other disabled_* fields parity", () => {
     expect(result.success).toBe(false)
   })
 
+  test("disabled_hooks rejects empty strings", () => {
+    // given
+    const config = { disabled_hooks: [""] }
+
+    // when
+    const result = OhMyOpenCodeConfigSchema.safeParse(config)
+
+    // then
+    expect(result.success).toBe(false)
+  })
+
   test("disabled_tools rejects whitespace-only strings", () => {
     // given
     const config = { disabled_tools: ["   "] }
+
+    // when
+    const result = OhMyOpenCodeConfigSchema.safeParse(config)
+
+    // then
+    expect(result.success).toBe(false)
+  })
+
+  test("disabled_tools rejects empty strings", () => {
+    // given
+    const config = { disabled_tools: [""] }
+
+    // when
+    const result = OhMyOpenCodeConfigSchema.safeParse(config)
+
+    // then
+    expect(result.success).toBe(false)
+  })
+
+  test("disabled_mcps rejects whitespace-only strings", () => {
+    // given
+    const config = { disabled_mcps: ["  "] }
+
+    // when
+    const result = OhMyOpenCodeConfigSchema.safeParse(config)
+
+    // then
+    expect(result.success).toBe(false)
+  })
+
+  test("disabled_mcps rejects empty strings", () => {
+    // given
+    const config = { disabled_mcps: [""] }
 
     // when
     const result = OhMyOpenCodeConfigSchema.safeParse(config)

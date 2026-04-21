@@ -1,5 +1,4 @@
 import { z } from "zod"
-import { AnyMcpNameSchema } from "../../mcp/types"
 import { AgentDefinitionsConfigSchema } from "./agent-definitions"
 import { AgentOverridesSchema } from "./agent-overrides"
 import { BabysittingConfigSchema } from "./babysitting"
@@ -36,7 +35,7 @@ export const OhMyOpenCodeConfigSchema = z.object({
   default_run_agent: z.string().optional(),
   /** Paths to external agent definition files (.md or .json) */
   agent_definitions: AgentDefinitionsConfigSchema,
-  disabled_mcps: z.array(AnyMcpNameSchema).optional(),
+  disabled_mcps: z.array(NonBlankStringSchema).optional(),
   disabled_agents: z.array(NonBlankStringSchema).optional(),
   /**
    * Skills to hide from discovery. Accepts any skill name, not just builtins.

@@ -44,7 +44,9 @@ export function skillsToCommandDefinitionRecord(
 
   for (const skill of topLevel) {
     if (!isVisibleInSlash(skill, false)) {
-      keyAssignedTo.set(skill.name, skill.name)
+      if (!keyAssignedTo.has(skill.name)) {
+        keyAssignedTo.set(skill.name, skill.name)
+      }
       continue
     }
     registerSkill(result, keyAssignedTo, skill.name, skill)

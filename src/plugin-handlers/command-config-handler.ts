@@ -12,14 +12,15 @@ import {
 import { loadBuiltinCommands } from "../features/builtin-commands";
 import {
   discoverConfigSourceSkills,
-  loadGlobalAgentsSkills,
-  loadProjectAgentsSkills,
-  loadUserSkills,
-  loadProjectSkills,
-  loadOpencodeGlobalSkills,
-  loadOpencodeProjectSkills,
+  discoverGlobalAgentsSkills,
+  discoverProjectAgentsSkills,
+  discoverUserClaudeSkills,
+  discoverProjectClaudeSkills,
+  discoverOpencodeGlobalSkills,
+  discoverOpencodeProjectSkills,
   skillsToCommandDefinitionRecord,
 } from "../features/opencode-skill-loader";
+import type { LoadedSkill } from "../features/opencode-skill-loader";
 import {
   detectExternalSkillPlugin,
   getSkillPluginConflictWarning,
@@ -50,10 +51,8 @@ export async function applyCommandConfig(params: {
   }
 
   const hideNestedByDefault = resolveHideNestedByDefault(params.pluginConfig.skills);
-  const slashOptions = {
-    hideNestedByDefault,
-    keyAssignedTo: new Map<string, string>(),
-  };
+
+  const emptySkills: LoadedSkill[] = [];
 
   const [
     configSourceSkills,
@@ -76,28 +75,43 @@ export async function applyCommandConfig(params: {
     includeClaudeCommands ? loadProjectCommands(params.ctx.directory) : Promise.resolve({}),
     loadOpencodeGlobalCommands(),
     loadOpencodeProjectCommands(params.ctx.directory),
-    includeClaudeSkills ? loadUserSkills(slashOptions) : Promise.resolve({}),
-    includeAgentsSkills ? loadGlobalAgentsSkills(slashOptions) : Promise.resolve({}),
-    includeClaudeSkills ? loadProjectSkills(params.ctx.directory, slashOptions) : Promise.resolve({}),
-    includeAgentsSkills ? loadProjectAgentsSkills(params.ctx.directory, slashOptions) : Promise.resolve({}),
-    loadOpencodeGlobalSkills(slashOptions),
-    loadOpencodeProjectSkills(params.ctx.directory, slashOptions),
+    includeClaudeSkills ? discoverUserClaudeSkills() : Promise.resolve(emptySkills),
+    includeAgentsSkills ? discoverGlobalAgentsSkills() : Promise.resolve(emptySkills),
+    includeClaudeSkills ? discoverProjectClaudeSkills(params.ctx.directory) : Promise.resolve(emptySkills),
+    includeAgentsSkills ? discoverProjectAgentsSkills(params.ctx.directory) : Promise.resolve(emptySkills),
+    discoverOpencodeGlobalSkills(),
+    discoverOpencodeProjectSkills(params.ctx.directory),
   ]);
+
+  // Register skill sources sequentially in a deterministic priority order so
+  // flat-name ownership (via the shared keyAssignedTo map) is stable across
+  // runs. The priority order below matches the spread order used to merge
+  // the resulting records onto params.config.command below.
+  const keyAssignedTo = new Map<string, string>();
+  const skillOptions = { hideNestedByDefault, keyAssignedTo };
+
+  const configSourceRecord = skillsToCommandDefinitionRecord(configSourceSkills, skillOptions);
+  const userSkillsRecord = skillsToCommandDefinitionRecord(userSkills, skillOptions);
+  const globalAgentsSkillsRecord = skillsToCommandDefinitionRecord(globalAgentsSkills, skillOptions);
+  const opencodeGlobalSkillsRecord = skillsToCommandDefinitionRecord(opencodeGlobalSkills, skillOptions);
+  const projectSkillsRecord = skillsToCommandDefinitionRecord(projectSkills, skillOptions);
+  const projectAgentsSkillsRecord = skillsToCommandDefinitionRecord(projectAgentsSkills, skillOptions);
+  const opencodeProjectSkillsRecord = skillsToCommandDefinitionRecord(opencodeProjectSkills, skillOptions);
 
   params.config.command = {
     ...builtinCommands,
-    ...skillsToCommandDefinitionRecord(configSourceSkills, slashOptions),
+    ...configSourceRecord,
     ...userCommands,
-    ...userSkills,
-    ...globalAgentsSkills,
+    ...userSkillsRecord,
+    ...globalAgentsSkillsRecord,
     ...opencodeGlobalCommands,
-    ...opencodeGlobalSkills,
+    ...opencodeGlobalSkillsRecord,
     ...systemCommands,
     ...projectCommands,
-    ...projectSkills,
-    ...projectAgentsSkills,
+    ...projectSkillsRecord,
+    ...projectAgentsSkillsRecord,
     ...opencodeProjectCommands,
-    ...opencodeProjectSkills,
+    ...opencodeProjectSkillsRecord,
     ...params.pluginComponents.commands,
     ...params.pluginComponents.skills,
   };

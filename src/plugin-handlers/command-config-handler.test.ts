@@ -41,12 +41,12 @@ describe("applyCommandConfig", () => {
   let loadOpencodeGlobalCommandsSpy: ReturnType<typeof spyOn>;
   let loadOpencodeProjectCommandsSpy: ReturnType<typeof spyOn>;
   let discoverConfigSourceSkillsSpy: ReturnType<typeof spyOn>;
-  let loadUserSkillsSpy: ReturnType<typeof spyOn>;
-  let loadProjectSkillsSpy: ReturnType<typeof spyOn>;
-  let loadOpencodeGlobalSkillsSpy: ReturnType<typeof spyOn>;
-  let loadOpencodeProjectSkillsSpy: ReturnType<typeof spyOn>;
-  let loadProjectAgentsSkillsSpy: ReturnType<typeof spyOn>;
-  let loadGlobalAgentsSkillsSpy: ReturnType<typeof spyOn>;
+  let discoverUserClaudeSkillsSpy: ReturnType<typeof spyOn>;
+  let discoverProjectClaudeSkillsSpy: ReturnType<typeof spyOn>;
+  let discoverOpencodeGlobalSkillsSpy: ReturnType<typeof spyOn>;
+  let discoverOpencodeProjectSkillsSpy: ReturnType<typeof spyOn>;
+  let discoverProjectAgentsSkillsSpy: ReturnType<typeof spyOn>;
+  let discoverGlobalAgentsSkillsSpy: ReturnType<typeof spyOn>;
 
   beforeEach(() => {
     loadBuiltinCommandsSpy = spyOn(builtinCommands, "loadBuiltinCommands").mockReturnValue({});
@@ -55,12 +55,12 @@ describe("applyCommandConfig", () => {
     loadOpencodeGlobalCommandsSpy = spyOn(commandLoader, "loadOpencodeGlobalCommands").mockResolvedValue({});
     loadOpencodeProjectCommandsSpy = spyOn(commandLoader, "loadOpencodeProjectCommands").mockResolvedValue({});
     discoverConfigSourceSkillsSpy = spyOn(skillLoader, "discoverConfigSourceSkills").mockResolvedValue([]);
-    loadUserSkillsSpy = spyOn(skillLoader, "loadUserSkills").mockResolvedValue({});
-    loadProjectSkillsSpy = spyOn(skillLoader, "loadProjectSkills").mockResolvedValue({});
-    loadOpencodeGlobalSkillsSpy = spyOn(skillLoader, "loadOpencodeGlobalSkills").mockResolvedValue({});
-    loadOpencodeProjectSkillsSpy = spyOn(skillLoader, "loadOpencodeProjectSkills").mockResolvedValue({});
-    loadProjectAgentsSkillsSpy = spyOn(skillLoader, "loadProjectAgentsSkills").mockResolvedValue({});
-    loadGlobalAgentsSkillsSpy = spyOn(skillLoader, "loadGlobalAgentsSkills").mockResolvedValue({});
+    discoverUserClaudeSkillsSpy = spyOn(skillLoader, "discoverUserClaudeSkills").mockResolvedValue([]);
+    discoverProjectClaudeSkillsSpy = spyOn(skillLoader, "discoverProjectClaudeSkills").mockResolvedValue([]);
+    discoverOpencodeGlobalSkillsSpy = spyOn(skillLoader, "discoverOpencodeGlobalSkills").mockResolvedValue([]);
+    discoverOpencodeProjectSkillsSpy = spyOn(skillLoader, "discoverOpencodeProjectSkills").mockResolvedValue([]);
+    discoverProjectAgentsSkillsSpy = spyOn(skillLoader, "discoverProjectAgentsSkills").mockResolvedValue([]);
+    discoverGlobalAgentsSkillsSpy = spyOn(skillLoader, "discoverGlobalAgentsSkills").mockResolvedValue([]);
   });
 
   afterEach(() => {
@@ -70,28 +70,40 @@ describe("applyCommandConfig", () => {
     loadOpencodeGlobalCommandsSpy.mockRestore();
     loadOpencodeProjectCommandsSpy.mockRestore();
     discoverConfigSourceSkillsSpy.mockRestore();
-    loadUserSkillsSpy.mockRestore();
-    loadProjectSkillsSpy.mockRestore();
-    loadOpencodeGlobalSkillsSpy.mockRestore();
-    loadOpencodeProjectSkillsSpy.mockRestore();
-    loadProjectAgentsSkillsSpy.mockRestore();
-    loadGlobalAgentsSkillsSpy.mockRestore();
+    discoverUserClaudeSkillsSpy.mockRestore();
+    discoverProjectClaudeSkillsSpy.mockRestore();
+    discoverOpencodeGlobalSkillsSpy.mockRestore();
+    discoverOpencodeProjectSkillsSpy.mockRestore();
+    discoverProjectAgentsSkillsSpy.mockRestore();
+    discoverGlobalAgentsSkillsSpy.mockRestore();
   });
 
   test("includes .agents skills in command config", async () => {
-    // given
-    loadProjectAgentsSkillsSpy.mockResolvedValue({
-      "agents-project-skill": {
-        description: "(project - Skill) Agents project skill",
-        template: "template",
+    // given - mocked LoadedSkill arrays with top-level skills (depth 0)
+    discoverProjectAgentsSkillsSpy.mockResolvedValue([
+      {
+        name: "agents-project-skill",
+        scope: "project",
+        definition: {
+          name: "agents-project-skill",
+          description: "(project - Skill) Agents project skill",
+          template: "template",
+        },
+        depth: 0,
       },
-    });
-    loadGlobalAgentsSkillsSpy.mockResolvedValue({
-      "agents-global-skill": {
-        description: "(user - Skill) Agents global skill",
-        template: "template",
+    ]);
+    discoverGlobalAgentsSkillsSpy.mockResolvedValue([
+      {
+        name: "agents-global-skill",
+        scope: "user",
+        definition: {
+          name: "agents-global-skill",
+          description: "(user - Skill) Agents global skill",
+          template: "template",
+        },
+        depth: 0,
       },
-    });
+    ]);
     const config: Record<string, unknown> = { command: {} };
 
     // when
@@ -128,10 +140,10 @@ describe("applyCommandConfig", () => {
     });
 
     // then
-    expect(loadUserSkillsSpy).toHaveBeenCalledTimes(1);
-    expect(loadProjectSkillsSpy).toHaveBeenCalledTimes(1);
-    expect(loadGlobalAgentsSkillsSpy).not.toHaveBeenCalled();
-    expect(loadProjectAgentsSkillsSpy).not.toHaveBeenCalled();
+    expect(discoverUserClaudeSkillsSpy).toHaveBeenCalledTimes(1);
+    expect(discoverProjectClaudeSkillsSpy).toHaveBeenCalledTimes(1);
+    expect(discoverGlobalAgentsSkillsSpy).not.toHaveBeenCalled();
+    expect(discoverProjectAgentsSkillsSpy).not.toHaveBeenCalled();
   });
 
   test("loads only .agents skills when claude_code.skills.claude is false", async () => {
@@ -154,10 +166,10 @@ describe("applyCommandConfig", () => {
     });
 
     // then
-    expect(loadUserSkillsSpy).not.toHaveBeenCalled();
-    expect(loadProjectSkillsSpy).not.toHaveBeenCalled();
-    expect(loadGlobalAgentsSkillsSpy).toHaveBeenCalledTimes(1);
-    expect(loadProjectAgentsSkillsSpy).toHaveBeenCalledTimes(1);
+    expect(discoverUserClaudeSkillsSpy).not.toHaveBeenCalled();
+    expect(discoverProjectClaudeSkillsSpy).not.toHaveBeenCalled();
+    expect(discoverGlobalAgentsSkillsSpy).toHaveBeenCalledTimes(1);
+    expect(discoverProjectAgentsSkillsSpy).toHaveBeenCalledTimes(1);
   });
 
   test("normalizes Atlas command agents to the runtime list name used by opencode command routing", async () => {
