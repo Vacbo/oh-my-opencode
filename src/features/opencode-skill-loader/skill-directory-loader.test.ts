@@ -57,4 +57,73 @@ describe("loadSkillsFromDir", () => {
       "parent/nested-child",
     ]);
   });
+
+  it("marks top-level skills with depth 0 and nested skills with depth 1 and flatName", async () => {
+    // given
+    const tempDir = mkdtempSync(join(tmpdir(), "omo-skill-directory-loader-"));
+    tempDirs.push(tempDir);
+    const rootSkillsDir = join(tempDir, "skills");
+
+    writeSkill(join(rootSkillsDir, "parent"), "parent", "Parent description");
+    writeSkill(
+      join(rootSkillsDir, "parent", "child"),
+      "child",
+      "Child description",
+    );
+
+    // when
+    const loadedSkills = await loadSkillsFromDir({
+      skillsDir: rootSkillsDir,
+      scope: "user",
+      maxDepth: 2,
+    });
+
+    // then
+    const byName = new Map(loadedSkills.map((skill) => [skill.name, skill]));
+    const parent = byName.get("parent");
+    const child = byName.get("parent/child");
+
+    expect(parent?.depth).toBe(0);
+    expect(parent?.flatName).toBeUndefined();
+
+    expect(child?.depth).toBe(1);
+    expect(child?.flatName).toBe("child");
+  });
+
+  it("reads user-invocable from SKILL.md frontmatter", async () => {
+    // given
+    const tempDir = mkdtempSync(join(tmpdir(), "omo-skill-directory-loader-"));
+    tempDirs.push(tempDir);
+    const rootSkillsDir = join(tempDir, "skills");
+
+    mkdirSync(join(rootSkillsDir, "hidden-skill"), { recursive: true });
+    writeFileSync(
+      join(rootSkillsDir, "hidden-skill", "SKILL.md"),
+      `---\nname: hidden-skill\ndescription: Hidden from slash\nuser-invocable: false\n---\nBody\n`,
+    );
+
+    mkdirSync(join(rootSkillsDir, "visible-skill"), { recursive: true });
+    writeFileSync(
+      join(rootSkillsDir, "visible-skill", "SKILL.md"),
+      `---\nname: visible-skill\ndescription: Visible in slash\nuser-invocable: true\n---\nBody\n`,
+    );
+
+    mkdirSync(join(rootSkillsDir, "default-skill"), { recursive: true });
+    writeFileSync(
+      join(rootSkillsDir, "default-skill", "SKILL.md"),
+      `---\nname: default-skill\ndescription: No user-invocable field\n---\nBody\n`,
+    );
+
+    // when
+    const loadedSkills = await loadSkillsFromDir({
+      skillsDir: rootSkillsDir,
+      scope: "user",
+    });
+
+    // then
+    const byName = new Map(loadedSkills.map((s) => [s.name, s]));
+    expect(byName.get("hidden-skill")?.userInvocable).toBe(false);
+    expect(byName.get("visible-skill")?.userInvocable).toBe(true);
+    expect(byName.get("default-skill")?.userInvocable).toBeUndefined();
+  });
 });

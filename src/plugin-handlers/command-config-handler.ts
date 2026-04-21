@@ -1,4 +1,4 @@
-import type { OhMyOpenCodeConfig } from "../config";
+import type { OhMyOpenCodeConfig, SkillsConfig } from "../config";
 import {
   getAgentConfigKey,
   getAgentListDisplayName,
@@ -49,6 +49,9 @@ export async function applyCommandConfig(params: {
     log(getSkillPluginConflictWarning(externalSkillPlugin.pluginName!));
   }
 
+  const hideNestedByDefault = resolveHideNestedByDefault(params.pluginConfig.skills);
+  const slashOptions = { hideNestedByDefault };
+
   const [
     configSourceSkills,
     userCommands,
@@ -70,17 +73,17 @@ export async function applyCommandConfig(params: {
     includeClaudeCommands ? loadProjectCommands(params.ctx.directory) : Promise.resolve({}),
     loadOpencodeGlobalCommands(),
     loadOpencodeProjectCommands(params.ctx.directory),
-    includeClaudeSkills ? loadUserSkills() : Promise.resolve({}),
-    includeAgentsSkills ? loadGlobalAgentsSkills() : Promise.resolve({}),
-    includeClaudeSkills ? loadProjectSkills(params.ctx.directory) : Promise.resolve({}),
-    includeAgentsSkills ? loadProjectAgentsSkills(params.ctx.directory) : Promise.resolve({}),
-    loadOpencodeGlobalSkills(),
-    loadOpencodeProjectSkills(params.ctx.directory),
+    includeClaudeSkills ? loadUserSkills(slashOptions) : Promise.resolve({}),
+    includeAgentsSkills ? loadGlobalAgentsSkills(slashOptions) : Promise.resolve({}),
+    includeClaudeSkills ? loadProjectSkills(params.ctx.directory, slashOptions) : Promise.resolve({}),
+    includeAgentsSkills ? loadProjectAgentsSkills(params.ctx.directory, slashOptions) : Promise.resolve({}),
+    loadOpencodeGlobalSkills(slashOptions),
+    loadOpencodeProjectSkills(params.ctx.directory, slashOptions),
   ]);
 
   params.config.command = {
     ...builtinCommands,
-    ...skillsToCommandDefinitionRecord(configSourceSkills),
+    ...skillsToCommandDefinitionRecord(configSourceSkills, slashOptions),
     ...userCommands,
     ...userSkills,
     ...globalAgentsSkills,
@@ -105,4 +108,12 @@ function remapCommandAgentFields(commands: Record<string, Record<string, unknown
       cmd.agent = getAgentListDisplayName(getAgentConfigKey(cmd.agent));
     }
   }
+}
+
+function resolveHideNestedByDefault(skillsConfig: SkillsConfig | undefined): boolean {
+  if (!skillsConfig || Array.isArray(skillsConfig) || typeof skillsConfig !== "object") {
+    return false;
+  }
+  const value = (skillsConfig as { hide_nested_by_default?: unknown }).hide_nested_by_default;
+  return value === true;
 }
