@@ -14,8 +14,11 @@ export async function loadSkillFromPath(options: {
   defaultName: string
   scope: SkillScope
   namePrefix?: string
+  depth?: number
 }): Promise<LoadedSkill | null> {
   const namePrefix = options.namePrefix ?? ""
+  const depth = options.depth ?? 0
+  const isNested = depth > 0
 
   try {
     const content = await fs.readFile(options.skillPath, "utf-8")
@@ -62,6 +65,9 @@ export async function loadSkillFromPath(options: {
       allowedTools: parseAllowedTools(data["allowed-tools"]),
       mcpConfig,
       lazyContent: eagerLoader,
+      depth,
+      userInvocable: data["user-invocable"],
+      flatName: isNested ? baseName : undefined,
     }
   } catch {
     return null

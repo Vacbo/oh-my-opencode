@@ -76,13 +76,14 @@ export async function loadSkillFromPathAsync(
   resolvedPath: string,
   defaultName: string,
   scope: SkillScope,
-  namePrefix = ""
+  namePrefix = "",
+  depth = 0,
 ): Promise<LoadedSkill | null> {
   try {
     const content = await readFile(skillPath, "utf-8")
     const { data, body, parseError } = parseFrontmatter<SkillMetadata>(content)
     if (parseError) return null
-    
+
     const frontmatterMcp = parseSkillMcpConfigFromFrontmatter(content)
     const mcpJsonMcp = await loadMcpJsonFromDirAsync(resolvedPath)
     const mcpConfig = mcpJsonMcp || frontmatterMcp
@@ -115,6 +116,8 @@ $ARGUMENTS
       argumentHint: data["argument-hint"],
     }
 
+    const isNested = depth > 0
+
     return {
       name: skillName,
       path: skillPath,
@@ -126,6 +129,9 @@ $ARGUMENTS
       metadata: data.metadata,
       allowedTools: parseAllowedTools(data["allowed-tools"]),
       mcpConfig,
+      depth,
+      userInvocable: data["user-invocable"],
+      flatName: isNested ? baseName : undefined,
     }
   } catch {
     return null
