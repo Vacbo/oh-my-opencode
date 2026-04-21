@@ -1,6 +1,5 @@
 import { z } from "zod"
 import { AnyMcpNameSchema } from "../../mcp/types"
-import { BuiltinSkillNameSchema } from "./agent-names"
 import { AgentDefinitionsConfigSchema } from "./agent-definitions"
 import { AgentOverridesSchema } from "./agent-overrides"
 import { BabysittingConfigSchema } from "./babysitting"
@@ -9,7 +8,6 @@ import { BrowserAutomationConfigSchema } from "./browser-automation"
 import { CategoriesConfigSchema } from "./categories"
 import { ClaudeCodeConfigSchema } from "./claude-code"
 import { CommentCheckerConfigSchema } from "./comment-checker"
-import { BuiltinCommandNameSchema } from "./commands"
 import { ExperimentalConfigSchema } from "./experimental"
 import { GitMasterConfigSchema } from "./git-master"
 import { NotificationConfigSchema } from "./notification"
@@ -34,9 +32,19 @@ export const OhMyOpenCodeConfigSchema = z.object({
   agent_definitions: AgentDefinitionsConfigSchema,
   disabled_mcps: z.array(AnyMcpNameSchema).optional(),
   disabled_agents: z.array(z.string()).optional(),
-  disabled_skills: z.array(BuiltinSkillNameSchema).optional(),
+  /**
+   * Skills to hide from discovery. Accepts any skill name — not just builtins.
+   * Matches against the skill's registered name (e.g. "review-work",
+   * "qs-anti-patterns", or user-installed skill names). Unknown names are a
+   * silent no-op so stale entries don't break config parsing.
+   */
+  disabled_skills: z.array(z.string().min(1)).optional(),
   disabled_hooks: z.array(z.string()).optional(),
-  disabled_commands: z.array(BuiltinCommandNameSchema).optional(),
+  /**
+   * Commands to hide. Accepts any command name — not just builtins. Unknown
+   * names are a silent no-op.
+   */
+  disabled_commands: z.array(z.string().min(1)).optional(),
   /** Disable specific tools by name (e.g., ["todowrite", "todoread"]) */
   disabled_tools: z.array(z.string()).optional(),
   mcp_env_allowlist: z.array(z.string()).optional(),

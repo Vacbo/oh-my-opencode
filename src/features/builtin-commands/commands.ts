@@ -125,7 +125,7 @@ $ARGUMENTS
 }
 
 export function loadBuiltinCommands(
-  disabledCommands?: BuiltinCommandName[],
+  disabledCommands?: readonly string[],
   options?: LoadBuiltinCommandsOptions,
 ): BuiltinCommands {
   const builtinCommandDefinitions = createBuiltinCommandDefinitions(options)
@@ -133,7 +133,7 @@ export function loadBuiltinCommands(
   const commands: BuiltinCommands = {}
 
   for (const [name, definition] of Object.entries(builtinCommandDefinitions)) {
-    if (!disabled.has(name as BuiltinCommandName)) {
+    if (!disabled.has(name)) {
       const { argumentHint: _argumentHint, ...openCodeCompatible } = definition
       commands[name] = { ...openCodeCompatible, name } as CommandDefinition
     }
