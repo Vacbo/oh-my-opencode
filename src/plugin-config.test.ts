@@ -238,6 +238,42 @@ describe("parseConfigPartially", () => {
       expect(result!.agents?.oracle).toMatchObject({ model: "openai/gpt-5.4" });
       expect(result!.disabled_hooks).toEqual(["not-a-real-hook"]);
     });
+
+    it("drops whitespace-only disabled_* entries even on the partial fast path", () => {
+      // given - an otherwise-invalid config that forces the partial fallback
+      // plus whitespace-only entries that would pass the string-array fast
+      // path if we did not explicitly re-check non-blank semantics
+      const rawConfig = {
+        agents: { oracle: { temperature: "not-a-number" } },
+        disabled_skills: ["real-skill", "  "],
+        disabled_commands: ["\t"],
+      };
+
+      // when
+      const result = parseConfigPartially(rawConfig);
+
+      // then
+      expect(result).not.toBeNull();
+      // disabled_skills entire array is rejected because it contains a blank
+      expect(result!.disabled_skills).toBeUndefined();
+      // disabled_commands entire array is rejected for the same reason
+      expect(result!.disabled_commands).toBeUndefined();
+    });
+
+    it("keeps valid disabled_* entries on the partial fast path when no blanks are present", () => {
+      // given
+      const rawConfig = {
+        agents: { oracle: { temperature: "not-a-number" } },
+        disabled_skills: ["real-skill", "another-skill"],
+      };
+
+      // when
+      const result = parseConfigPartially(rawConfig);
+
+      // then
+      expect(result).not.toBeNull();
+      expect(result!.disabled_skills).toEqual(["real-skill", "another-skill"]);
+    });
   });
 
   describe("completely invalid config", () => {

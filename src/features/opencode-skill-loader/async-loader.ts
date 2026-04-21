@@ -173,37 +173,27 @@ export async function discoverSkillsInDirAsync(
       const collected: LoadedSkill[] = []
 
       const skillMdPath = join(resolvedPath, "SKILL.md")
-      try {
-        await readFile(skillMdPath, "utf-8")
-        const loaded = await loadSkillFromPathAsync(
-          skillMdPath,
+      const skillFromSkillMd = await loadSkillFromPathAsync(
+        skillMdPath,
+        resolvedPath,
+        dirName,
+        scope,
+        namePrefix,
+        depth,
+      )
+      if (skillFromSkillMd) {
+        collected.push(skillFromSkillMd)
+      } else {
+        const namedSkillMdPath = join(resolvedPath, `${dirName}.md`)
+        const skillFromNamedMd = await loadSkillFromPathAsync(
+          namedSkillMdPath,
           resolvedPath,
           dirName,
           scope,
           namePrefix,
           depth,
         )
-        if (loaded) collected.push(loaded)
-      } catch {
-        // no SKILL.md at this path; try {dirName}.md fallback next
-      }
-
-      if (collected.length === 0) {
-        const namedSkillMdPath = join(resolvedPath, `${dirName}.md`)
-        try {
-          await readFile(namedSkillMdPath, "utf-8")
-          const loaded = await loadSkillFromPathAsync(
-            namedSkillMdPath,
-            resolvedPath,
-            dirName,
-            scope,
-            namePrefix,
-            depth,
-          )
-          if (loaded) collected.push(loaded)
-        } catch {
-          // no entrypoint in this directory; rely on recursion below
-        }
+        if (skillFromNamedMd) collected.push(skillFromNamedMd)
       }
 
       if (depth < maxDepth) {

@@ -122,3 +122,107 @@ describe("OhMyOpenCodeConfigSchema disabled_commands", () => {
     expect(result.success).toBe(false)
   })
 })
+
+describe("OhMyOpenCodeConfigSchema other disabled_* fields parity", () => {
+  test("disabled_agents rejects whitespace-only strings", () => {
+    // given
+    const config = { disabled_agents: [" ", "\t"] }
+
+    // when
+    const result = OhMyOpenCodeConfigSchema.safeParse(config)
+
+    // then
+    expect(result.success).toBe(false)
+  })
+
+  test("disabled_agents rejects empty strings", () => {
+    // given
+    const config = { disabled_agents: [""] }
+
+    // when
+    const result = OhMyOpenCodeConfigSchema.safeParse(config)
+
+    // then
+    expect(result.success).toBe(false)
+  })
+
+  test("disabled_hooks rejects whitespace-only strings", () => {
+    // given
+    const config = { disabled_hooks: ["\n"] }
+
+    // when
+    const result = OhMyOpenCodeConfigSchema.safeParse(config)
+
+    // then
+    expect(result.success).toBe(false)
+  })
+
+  test("disabled_hooks rejects empty strings", () => {
+    // given
+    const config = { disabled_hooks: [""] }
+
+    // when
+    const result = OhMyOpenCodeConfigSchema.safeParse(config)
+
+    // then
+    expect(result.success).toBe(false)
+  })
+
+  test("disabled_tools rejects whitespace-only strings", () => {
+    // given
+    const config = { disabled_tools: ["   "] }
+
+    // when
+    const result = OhMyOpenCodeConfigSchema.safeParse(config)
+
+    // then
+    expect(result.success).toBe(false)
+  })
+
+  test("disabled_tools rejects empty strings", () => {
+    // given
+    const config = { disabled_tools: [""] }
+
+    // when
+    const result = OhMyOpenCodeConfigSchema.safeParse(config)
+
+    // then
+    expect(result.success).toBe(false)
+  })
+
+  test("disabled_mcps rejects whitespace-only strings", () => {
+    // given
+    const config = { disabled_mcps: ["  "] }
+
+    // when
+    const result = OhMyOpenCodeConfigSchema.safeParse(config)
+
+    // then
+    expect(result.success).toBe(false)
+  })
+
+  test("disabled_mcps rejects empty strings", () => {
+    // given
+    const config = { disabled_mcps: [""] }
+
+    // when
+    const result = OhMyOpenCodeConfigSchema.safeParse(config)
+
+    // then
+    expect(result.success).toBe(false)
+  })
+
+  test("disabled_agents accepts valid names", () => {
+    // given
+    const config = { disabled_agents: ["my-agent", "another-agent"] }
+
+    // when
+    const result = OhMyOpenCodeConfigSchema.safeParse(config)
+
+    // then
+    expect(result.success).toBe(true)
+    if (result.success) {
+      expect(result.data.disabled_agents).toEqual(["my-agent", "another-agent"])
+    }
+  })
+})

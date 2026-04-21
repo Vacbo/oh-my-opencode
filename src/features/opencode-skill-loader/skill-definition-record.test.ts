@@ -175,4 +175,60 @@ describe("skillsToCommandDefinitionRecord - collision handling", () => {
       "security/auth-patterns",
     ])
   })
+
+  it("reserves flat-name slot when top-level is hidden via user-invocable false", () => {
+    // given - hidden top-level and a nested skill that would otherwise claim
+    // the same flat name
+    const skills: LoadedSkill[] = [
+      makeSkill({ name: "auth-patterns", userInvocable: false }),
+      makeSkill({
+        name: "security/auth-patterns",
+        depth: 1,
+        flatName: "auth-patterns",
+      }),
+    ]
+
+    // when
+    const record = skillsToCommandDefinitionRecord(skills)
+
+    // then - nested falls back to prefixed path because the hidden
+    // top-level still owns the flat slot; the hidden top-level is not
+    // registered itself
+    expect(Object.keys(record).sort()).toEqual(["security/auth-patterns"])
+  })
+
+  it("shares keyAssignedTo across calls so cross-source collisions resolve", () => {
+    // given - two separate calls (simulating two sources) feed the same
+    // ownership map; first source claims the flat name, second source tries
+    // the same flat name
+    const keyAssignedTo = new Map<string, string>()
+
+    const sourceA: LoadedSkill[] = [
+      makeSkill({
+        name: "quality-standard/qs-anti-patterns",
+        depth: 1,
+        flatName: "qs-anti-patterns",
+      }),
+    ]
+
+    const sourceB: LoadedSkill[] = [
+      makeSkill({
+        name: "other-hub/qs-anti-patterns",
+        depth: 1,
+        flatName: "qs-anti-patterns",
+      }),
+    ]
+
+    // when
+    const recordA = skillsToCommandDefinitionRecord(sourceA, {
+      keyAssignedTo,
+    })
+    const recordB = skillsToCommandDefinitionRecord(sourceB, {
+      keyAssignedTo,
+    })
+
+    // then - source A wins the flat slot, source B falls back to prefixed
+    expect(Object.keys(recordA)).toEqual(["qs-anti-patterns"])
+    expect(Object.keys(recordB)).toEqual(["other-hub/qs-anti-patterns"])
+  })
 })
