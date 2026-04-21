@@ -56,12 +56,13 @@ export interface LoadedSkill {
    */
   depth?: number
   /**
-   * Resolved visibility in the slash-command picker. Derived at load
-   * time from the Claude Code `user-invocable` frontmatter field (default
-   * true) XOR'd with the OmO `skills.hide_nested_by_default` inversion
-   * flag when the skill is nested. Non-invocable skills remain callable
-   * via the skill tool and load_skills delegation; only the slash menu
-   * is affected.
+   * Raw Claude Code `user-invocable` frontmatter value, if set. Undefined
+   * when the frontmatter field is omitted. The effective slash-command
+   * visibility (which also factors in the spec default of true and the
+   * OmO `skills.hide_nested_by_default` inversion for nested skills) is
+   * computed later during command registration, not stored here. Hidden
+   * skills remain callable via the skill tool and load_skills
+   * delegation; only the slash menu is affected.
    */
   userInvocable?: boolean
   /**
