@@ -45,6 +45,19 @@ const PARTIAL_STRING_ARRAY_KEYS = new Set([
   "agent_definitions",
 ]);
 
+// Keys whose fast-path accepts only non-blank strings. Must stay in sync with
+// the NonBlankStringSchema-validated fields in OhMyOpenCodeConfigSchema; a
+// whitespace-only value here would silently bypass the main schema when a
+// sibling section is invalid and forces the partial fallback.
+const PARTIAL_NON_BLANK_STRING_ARRAY_KEYS = new Set([
+  "disabled_mcps",
+  "disabled_agents",
+  "disabled_skills",
+  "disabled_hooks",
+  "disabled_commands",
+  "disabled_tools",
+]);
+
 export function parseConfigPartially(
   rawConfig: Record<string, unknown>
 ): OhMyOpenCodeConfig | null {
@@ -59,9 +72,18 @@ export function parseConfigPartially(
   for (const key of Object.keys(rawConfig)) {
     if (PARTIAL_STRING_ARRAY_KEYS.has(key)) {
       const sectionValue = rawConfig[key];
-      if (Array.isArray(sectionValue) && sectionValue.every((value) => typeof value === "string")) {
-        partialConfig[key] = sectionValue;
+      if (!Array.isArray(sectionValue)) continue;
+      if (!sectionValue.every((value) => typeof value === "string")) continue;
+      if (
+        PARTIAL_NON_BLANK_STRING_ARRAY_KEYS.has(key) &&
+        sectionValue.some((value) => (value as string).trim().length === 0)
+      ) {
+        invalidSections.push(
+          `${key}: array contains empty or whitespace-only entries`,
+        );
+        continue;
       }
+      partialConfig[key] = sectionValue;
       continue;
     }
 
