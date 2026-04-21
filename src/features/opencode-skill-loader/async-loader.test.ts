@@ -89,7 +89,7 @@ Skill body.
     })
 
     it("ignores direct .md files at the skills root (not a SKILL.md entrypoint)", async () => {
-      // given — plain markdown file directly under the skills root.
+      // given - plain markdown file directly under the skills root.
       // Per the Anthropic Agent Skills spec, a skill is a directory
       // containing SKILL.md. A bare .md file is supporting material,
       // not a skill, so discovery must skip it.
@@ -158,7 +158,7 @@ Nested skill.
     })
 
     it("ignores sibling .md files inside a nested directory that lacks SKILL.md or {dirName}.md", async () => {
-      // given — a nested directory holding only a plain .md file with
+      // given - a nested directory holding only a plain .md file with
       // neither a SKILL.md entrypoint nor a {dirName}.md fallback.
       // Discovery must recurse but find no invocable skill, since
       // supporting .md files are not skills per spec.

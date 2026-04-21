@@ -14,7 +14,7 @@ function makeSkill(partial: Partial<LoadedSkill> & { name: string }): LoadedSkil
   }
 }
 
-describe("skillsToCommandDefinitionRecord — spec-default (hideNestedByDefault: false)", () => {
+describe("skillsToCommandDefinitionRecord - spec-default (hideNestedByDefault: false)", () => {
   it("includes top-level skills by default", () => {
     // given
     const skills: LoadedSkill[] = [
@@ -69,7 +69,7 @@ describe("skillsToCommandDefinitionRecord — spec-default (hideNestedByDefault:
   })
 })
 
-describe("skillsToCommandDefinitionRecord — OmO inversion (hideNestedByDefault: true)", () => {
+describe("skillsToCommandDefinitionRecord - OmO inversion (hideNestedByDefault: true)", () => {
   it("hides nested skills whose user-invocable is unset", () => {
     // given
     const skills: LoadedSkill[] = [
@@ -82,7 +82,7 @@ describe("skillsToCommandDefinitionRecord — OmO inversion (hideNestedByDefault
       hideNestedByDefault: true,
     })
 
-    // then — nested is hidden, top-level unaffected
+    // then - nested is hidden, top-level unaffected
     expect(Object.keys(record).sort()).toEqual(["top-level"])
   })
 
@@ -108,7 +108,7 @@ describe("skillsToCommandDefinitionRecord — OmO inversion (hideNestedByDefault
       hideNestedByDefault: true,
     })
 
-    // then — opted-in nested visible under flat name; other hidden
+    // then - opted-in nested visible under flat name; other hidden
     expect(Object.keys(record).sort()).toEqual(["opted-in", "top-level"])
   })
 
@@ -129,7 +129,7 @@ describe("skillsToCommandDefinitionRecord — OmO inversion (hideNestedByDefault
   })
 })
 
-describe("skillsToCommandDefinitionRecord — collision handling", () => {
+describe("skillsToCommandDefinitionRecord - collision handling", () => {
   it("falls back to prefixed path when two nested skills collide on flat name", () => {
     // given
     const skills: LoadedSkill[] = [
@@ -148,7 +148,7 @@ describe("skillsToCommandDefinitionRecord — collision handling", () => {
     // when
     const record = skillsToCommandDefinitionRecord(skills)
 
-    // then — first wins the flat key, second falls back to prefixed
+    // then - first wins the flat key, second falls back to prefixed
     expect(Object.keys(record).sort()).toEqual([
       "auth-patterns",
       "quality-standard/auth-patterns",
@@ -156,7 +156,7 @@ describe("skillsToCommandDefinitionRecord — collision handling", () => {
   })
 
   it("yields to a top-level skill that owns the same flat name regardless of iteration order", () => {
-    // given — nested appears before top-level in input array
+    // given - nested appears before top-level in input array
     const skills: LoadedSkill[] = [
       makeSkill({
         name: "security/auth-patterns",
@@ -169,7 +169,7 @@ describe("skillsToCommandDefinitionRecord — collision handling", () => {
     // when
     const record = skillsToCommandDefinitionRecord(skills)
 
-    // then — top-level owns flat slot, nested takes prefixed path
+    // then - top-level owns flat slot, nested takes prefixed path
     expect(Object.keys(record).sort()).toEqual([
       "auth-patterns",
       "security/auth-patterns",

@@ -15,9 +15,9 @@ At snapshot time: 43 commits.
 
 | Category | Meaning | Never-upstream? |
 | --- | --- | --- |
-| `analyzer-infra` | AI-powered upstream-release analyzer (tool, CI workflows, prompts) | Yes — fork-specific automation |
-| `scoped-package` | Switch from `oh-my-opencode` to `@vacbo/oh-my-opencode` scope, trusted publishing, ancillary test/doc fixes | Yes — fork identity |
-| `sync-cherrypick` | Cherry-picked from upstream in a prior sync window; stays on fork until formal tag sync | No — already upstream, just not yet rebased-over |
+| `analyzer-infra` | AI-powered upstream-release analyzer (tool, CI workflows, prompts) | Yes -- fork-specific automation |
+| `scoped-package` | Switch from `oh-my-opencode` to `@vacbo/oh-my-opencode` scope, trusted publishing, ancillary test/doc fixes | Yes -- fork identity |
+| `sync-cherrypick` | Cherry-picked from upstream in a prior sync window; stays on fork until formal tag sync | No -- already upstream, just not yet rebased-over |
 | `fork-only-fix` | Bug fix or behavior change authored here that is not present upstream | Try-to-upstream or never-upstream, per-commit |
 | `ci-hardening` | Generic CI maintenance (action version bumps, retry logic) | Usually try-to-upstream |
 | `release-bot` | `release: vX.Y.Z` commits the `publish.yml` workflow writes | Never-upstream (per-fork release tracking) |

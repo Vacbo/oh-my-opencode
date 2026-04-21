@@ -1,10 +1,10 @@
 import { readFile, readdir } from "fs/promises"
 import type { Dirent } from "fs"
-import { join, basename } from "path"
+import { join } from "path"
 import yaml from "js-yaml"
 import { parseFrontmatter } from "../../shared/frontmatter"
 import { sanitizeModelField } from "../../shared/model-sanitizer"
-import { resolveSymlink, isMarkdownFile } from "../../shared/file-utils"
+import { resolveSymlink } from "../../shared/file-utils"
 import { resolveSkillPathReferences } from "../../shared/skill-path-resolver"
 import type { CommandDefinition } from "../claude-code-command-loader/types"
 import type { SkillScope, SkillMetadata, LoadedSkill } from "./types"
@@ -170,11 +170,12 @@ export async function discoverSkillsInDirAsync(
       const entryPath = join(skillsDir, entry.name)
       const resolvedPath = resolveSymlink(entryPath)
       const dirName = entry.name
+      const collected: LoadedSkill[] = []
 
       const skillMdPath = join(resolvedPath, "SKILL.md")
       try {
         await readFile(skillMdPath, "utf-8")
-        return await loadSkillFromPathAsync(
+        const loaded = await loadSkillFromPathAsync(
           skillMdPath,
           resolvedPath,
           dirName,
@@ -182,39 +183,44 @@ export async function discoverSkillsInDirAsync(
           namePrefix,
           depth,
         )
+        if (loaded) collected.push(loaded)
       } catch {
-        // fall through to {dirName}.md fallback and recursive descent
+        // no SKILL.md at this path; try {dirName}.md fallback next
       }
 
-      const namedSkillMdPath = join(resolvedPath, `${dirName}.md`)
-      try {
-        await readFile(namedSkillMdPath, "utf-8")
-        return await loadSkillFromPathAsync(
-          namedSkillMdPath,
+      if (collected.length === 0) {
+        const namedSkillMdPath = join(resolvedPath, `${dirName}.md`)
+        try {
+          await readFile(namedSkillMdPath, "utf-8")
+          const loaded = await loadSkillFromPathAsync(
+            namedSkillMdPath,
+            resolvedPath,
+            dirName,
+            scope,
+            namePrefix,
+            depth,
+          )
+          if (loaded) collected.push(loaded)
+        } catch {
+          // no entrypoint in this directory; rely on recursion below
+        }
+      }
+
+      if (depth < maxDepth) {
+        const nestedPrefix = namePrefix ? `${namePrefix}/${dirName}` : dirName
+        const nestedSkills = await discoverSkillsInDirAsync(
           resolvedPath,
-          dirName,
           scope,
-          namePrefix,
-          depth,
+          nestedPrefix,
+          depth + 1,
+          maxDepth,
         )
-      } catch {
-        // no entrypoint in this directory; recurse if depth allows
+        collected.push(...nestedSkills)
       }
 
-      if (depth >= maxDepth) {
-        return null
-      }
-
-      const nestedPrefix = namePrefix ? `${namePrefix}/${dirName}` : dirName
-      const nestedSkills = await discoverSkillsInDirAsync(
-        resolvedPath,
-        scope,
-        nestedPrefix,
-        depth + 1,
-        maxDepth,
-      )
-
-      return nestedSkills.length > 0 ? nestedSkills : null
+      if (collected.length === 0) return null
+      if (collected.length === 1) return collected[0]
+      return collected
     }
 
     const skillPromises = await mapWithConcurrency(entries, processEntry, 16)

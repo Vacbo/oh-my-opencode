@@ -55,6 +55,17 @@ describe("OhMyOpenCodeConfigSchema disabled_skills", () => {
     // then
     expect(result.success).toBe(false)
   })
+
+  test("rejects whitespace-only strings", () => {
+    // given
+    const config = { disabled_skills: ["   ", "\t\n"] }
+
+    // when
+    const result = OhMyOpenCodeConfigSchema.safeParse(config)
+
+    // then
+    expect(result.success).toBe(false)
+  })
 })
 
 describe("OhMyOpenCodeConfigSchema disabled_commands", () => {
@@ -92,6 +103,17 @@ describe("OhMyOpenCodeConfigSchema disabled_commands", () => {
   test("rejects empty strings", () => {
     // given
     const config = { disabled_commands: [""] }
+
+    // when
+    const result = OhMyOpenCodeConfigSchema.safeParse(config)
+
+    // then
+    expect(result.success).toBe(false)
+  })
+
+  test("rejects whitespace-only strings", () => {
+    // given
+    const config = { disabled_commands: ["  "] }
 
     // when
     const result = OhMyOpenCodeConfigSchema.safeParse(config)
