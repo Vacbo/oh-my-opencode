@@ -163,46 +163,58 @@ export async function discoverSkillsInDirAsync(
     const processEntry = async (entry: Dirent): Promise<LoadedSkill | LoadedSkill[] | null> => {
       if (entry.name.startsWith(".")) return null
 
+      if (!(entry.isDirectory() || entry.isSymbolicLink())) {
+        return null
+      }
+
       const entryPath = join(skillsDir, entry.name)
+      const resolvedPath = resolveSymlink(entryPath)
+      const dirName = entry.name
 
-      if (entry.isDirectory() || entry.isSymbolicLink()) {
-        const resolvedPath = resolveSymlink(entryPath)
-        const dirName = entry.name
-
-        const skillMdPath = join(resolvedPath, "SKILL.md")
-        try {
-          await readFile(skillMdPath, "utf-8")
-          return await loadSkillFromPathAsync(skillMdPath, resolvedPath, dirName, scope, namePrefix)
-        } catch {
-          const namedSkillMdPath = join(resolvedPath, `${dirName}.md`)
-          try {
-            await readFile(namedSkillMdPath, "utf-8")
-            return await loadSkillFromPathAsync(namedSkillMdPath, resolvedPath, dirName, scope, namePrefix)
-          } catch {
-            if (depth >= maxDepth) {
-              return null
-            }
-
-            const nestedPrefix = namePrefix ? `${namePrefix}/${dirName}` : dirName
-            const nestedSkills = await discoverSkillsInDirAsync(
-              resolvedPath,
-              scope,
-              nestedPrefix,
-              depth + 1,
-              maxDepth
-            )
-
-            return nestedSkills.length > 0 ? nestedSkills : null
-          }
-        }
+      const skillMdPath = join(resolvedPath, "SKILL.md")
+      try {
+        await readFile(skillMdPath, "utf-8")
+        return await loadSkillFromPathAsync(
+          skillMdPath,
+          resolvedPath,
+          dirName,
+          scope,
+          namePrefix,
+          depth,
+        )
+      } catch {
+        // fall through to {dirName}.md fallback and recursive descent
       }
 
-      if (isMarkdownFile(entry)) {
-        const skillName = basename(entry.name, ".md")
-        return await loadSkillFromPathAsync(entryPath, skillsDir, skillName, scope, namePrefix)
+      const namedSkillMdPath = join(resolvedPath, `${dirName}.md`)
+      try {
+        await readFile(namedSkillMdPath, "utf-8")
+        return await loadSkillFromPathAsync(
+          namedSkillMdPath,
+          resolvedPath,
+          dirName,
+          scope,
+          namePrefix,
+          depth,
+        )
+      } catch {
+        // no entrypoint in this directory; recurse if depth allows
       }
 
-      return null
+      if (depth >= maxDepth) {
+        return null
+      }
+
+      const nestedPrefix = namePrefix ? `${namePrefix}/${dirName}` : dirName
+      const nestedSkills = await discoverSkillsInDirAsync(
+        resolvedPath,
+        scope,
+        nestedPrefix,
+        depth + 1,
+        maxDepth,
+      )
+
+      return nestedSkills.length > 0 ? nestedSkills : null
     }
 
     const skillPromises = await mapWithConcurrency(entries, processEntry, 16)
