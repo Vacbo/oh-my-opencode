@@ -18,7 +18,7 @@ rejecting, or citing any upstream commit, read the file list and the line
 counts. Form the judgment from what the commit DOES, not what its title SAYS.
 
 Worked example. Upstream PR #868 ("feat/deepwiki", merged as `987ae468`)
-modifies exactly one file: `README.md`, one line added — a
+modifies exactly one file: `README.md`, one line added -- a
 [deepwiki.com](https://deepwiki.com) badge pointing to the auto-generated wiki
 for `code-yeongyu/oh-my-openagent`. There is no source code, no MCP server, no
 tool registration, no plugin wiring. A title-only read invites the conclusion
@@ -29,7 +29,7 @@ diff itself carries the weight.
 
 The rule generalizes. The analyzer's classifier (§6) scores each commit on
 what its diff contains, not on its title or commit message. Maintainers must
-apply the same discipline manually when reviewing the analyzer's draft PRs —
+apply the same discipline manually when reviewing the analyzer's draft PRs --
 especially for the `-good` batch, where a charitable title can smuggle in
 admin-only or churn-only commits that the file-list reveals immediately.
 
@@ -39,11 +39,11 @@ admin-only or churn-only commits that the file-list reveals immediately.
 | --- | --- |
 | Published version | `@vacbo/oh-my-opencode@3.18.0` |
 | Last upstream tag synced (`upstream-version.txt`) | `v3.17.0` |
-| Latest upstream stable tag | `v3.18.0` |
+| Latest upstream stable tag | `v3.17.4` |
 | Fork `dev` vs `upstream/dev` | 43 ahead / 60 behind |
 | Sync pipeline | `upstream-tag-watcher.yml` + `upstream-analyzer.yml` (3-pass AI classifier) |
 | Release pipeline | `publish.yml` (main package + 11 platform binaries + GitHub release) |
-| Legacy pipeline | `sync-upstream.yml` — **disabled**, kept for reference |
+| Legacy pipeline | `sync-upstream.yml` -- **disabled**, kept for reference |
 | Slop rubric | `.github/prompts/{commit-classify,slop-verify,release-synthesis}.md` |
 | Deviation register | `docs/fork-deviations.md` |
 
@@ -76,21 +76,24 @@ Providers and chains are configured in `upstream-analyzer.yml` workflow inputs
 and `script/upstream-analyzer/providers.ts`. Default chain order is best-free
 first (OpenRouter → NVIDIA → GitHub Models).
 
-## 3. Manual gate — the six steps after the analyzer fires
+## 3. Manual gate -- the six steps after the analyzer fires
 
 ### Step A. Triage the analysis issue
 
 The analyzer opens a labeled issue with the release-level verdict. Read it
-before touching any PR. If the verdict is "mostly slop" across the window, you
-can legitimately skip this upstream release entirely — leave
-`upstream-version.txt` at its current value so the next analyzer run includes
-the skipped commits in a wider window.
+before touching any PR. If the verdict is "mostly slop" across the window you
+still need to advance `upstream-version.txt` to the inspected tag after you
+close the draft PRs; the `upstream-tag-watcher.yml` cron reads that file and
+will re-dispatch the analyzer every 15 minutes for as long as the tracker
+stays behind the latest upstream tag. Either advance the tracker and let the
+next upstream tag kick off a fresh window, or temporarily record the skipped
+tag in `.upstream-watcher-seen-tag` so the watcher does not keep firing.
 
 ### Step B. Process the `-good` batch
 
 Default: merge after CI passes.
 
-Exception — **the classifier is known to be charitable** on administrative
+Exception -- **the classifier is known to be charitable** on administrative
 commits. Before merging, scan the batch for and drop:
 
 - CLA signature commits (`@X has signed the CLA in code-yeongyu/...`)
@@ -132,7 +135,9 @@ The workflow:
 3. Publishes `@vacbo/oh-my-opencode` with provenance
 4. Builds and publishes 11 platform binaries
 5. Tags `v{version}`, generates changelog, creates GitHub release
-6. Merges `dev` → `master`
+6. Resets `master` to the new release tag and force-pushes (the workflow does
+   `git checkout master && git reset --hard v{version} && git push -f origin master`;
+   it does not create a `dev` to `master` merge commit)
 
 ## 4. Fork-only fixes (changes that do not come from upstream)
 
@@ -140,13 +145,13 @@ Path:
 
 1. Branch from `dev`: `feat/<scope>`, `fix/<scope>`, or `docs/<scope>`.
 2. PR to `dev` (not `master`). Reviewer applies the same slop rubric as upstream
-   commits — see §6.
+   commits -- see §6.
 3. CI gates: `bun test`, `bun run typecheck`, publish workflow smoke tests.
 4. On merge, add a row to `docs/fork-deviations.md` with the SHA, category,
    reason, and upstream plan (see §7).
 5. Next `publish.yml` dispatch folds the change into a release.
 
-Fork-only fixes must not land on `sync/upstream/*` branches — those are reserved
+Fork-only fixes must not land on `sync/upstream/*` branches -- those are reserved
 for upstream cherry-picks so the analyzer's lineage tracking stays clean.
 
 ## 5. Conflict resolution
@@ -156,7 +161,7 @@ When a `sync/upstream/{tag}-{verdict}` cherry-pick conflicts:
 | Conflict type | Rule |
 | --- | --- |
 | Upstream changed a file we rewrote for slop | Prefer fork version. Re-classify upstream's change in next window. |
-| Upstream fixed a bug in code we no longer have | Drop the commit — not applicable. |
+| Upstream fixed a bug in code we no longer have | Drop the commit -- not applicable. |
 | Upstream feature collides with a fork-only feature | Prefer fork version. Open an issue to either port the upstream approach or justify the permanent delta. |
 | Trivial formatting / line endings / timestamps | Take either side; auto-resolve if possible. |
 
@@ -165,7 +170,7 @@ work, stop and record it as a divergence-tax data point in a comment on the
 draft PR. Repeated high-tax conflicts are a signal that the relevant fork
 patches should be proposed upstream or reconsidered.
 
-## 6. Anti-slop checklist (apply to every PR — upstream-origin or fork-origin)
+## 6. Anti-slop checklist (apply to every PR -- upstream-origin or fork-origin)
 
 Default to NEEDS_REVIEW when unsure. 60 seconds of human read is cheaper than a
 permanent slop merge.
@@ -194,7 +199,7 @@ Category-first taxonomy (apply before the verdict):
 | Code-value | `real_bug_fix`, `real_test`, `real_feature`, `refactor_with_clear_value` | GOOD |
 | Suspicious | `refactor_churn`, `docs_churn`, `minor_visibility_churn`, `workflow_or_tooling_maze` | Lean SLOP |
 | Admin | `cla_admin`, `release_version_bump`, `governance_noise`, `date_count_metadata_churn` | Never GOOD |
-| Unclear | — | NEEDS_REVIEW |
+| Unclear | -- | NEEDS_REVIEW |
 
 The canonical rubric lives in `.github/prompts/commit-classify.md`. This table
 is a human-facing summary; the prompt file is the source of truth.
@@ -244,12 +249,12 @@ when you have something a user would notice.
 
 ## 10. What this document deliberately excludes
 
-- The analyzer's internal prompt engineering — owned by `.github/prompts/`.
+- The analyzer's internal prompt engineering -- owned by `.github/prompts/`.
 - The OmO source-code diagnostic plan (slop + performance audit of this fork
-  itself) — owned by `p10`, blocked on the diagnostic from `p9`.
-- The opencode-fork feasibility study — owned by `p11`.
+  itself) -- owned by `p10`, blocked on the diagnostic from `p9`.
+- The opencode-fork feasibility study -- owned by `p11`.
 - Any changes to tool routing for subagents (WarpGrep, DeepWiki, GitHub MCP,
-  recursion depth) — separate research track, out of scope for sync methodology.
+  recursion depth) -- separate research track, out of scope for sync methodology.
 
 ## 11. Immediate backlog (as of 2026-04-21)
 
@@ -257,12 +262,14 @@ Ordered by dependency.
 
 - [ ] Bump `upstream-version.txt` → `v3.17.4` to reflect what was actually
       synced in the p9 window (per handoff plan §Context, lines 45-51).
-- [ ] Dispatch the analyzer for `v3.17.4 → v3.18.0` to catch up on the
+- [ ] Dispatch the analyzer for `v3.17.4 -> upstream/dev` to catch up on the
       60-commit gap on `upstream/dev`.
 - [ ] Review the 3 draft PRs it produces, applying §3 Steps B-D.
-- [ ] Bump `upstream-version.txt` → `v3.18.0` after the merge decisions
-      conclude.
-- [ ] Dispatch `publish.yml` with `bump: patch` → `@vacbo/oh-my-opencode@3.18.1`.
+- [ ] Bump `upstream-version.txt` to the newly-inspected tag after the merge
+      decisions conclude.
+- [ ] Dispatch `publish.yml` with the appropriate `bump` (the feature work in
+      `user-invocable` + `hide_nested_by_default` warrants `minor`; pure bugfix
+      or doc windows warrant `patch`).
 - [ ] Optional: extend the analyzer with a pass over upstream's
       closed-unmerged PRs (§8 future work).
 - [ ] Optional: turn the slop rubric inward onto this fork's own commits
