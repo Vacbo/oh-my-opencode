@@ -54,6 +54,7 @@ export async function loadSkillsFromDir(options: {
         defaultName: dirName,
         scope: options.scope,
         namePrefix,
+        depth,
       });
       if (skill && !skillMap.has(skill.name)) {
         skillMap.set(skill.name, skill);
@@ -73,6 +74,7 @@ export async function loadSkillsFromDir(options: {
           defaultName: dirName,
           scope: options.scope,
           namePrefix,
+          depth,
         });
         if (skill && !skillMap.has(skill.name)) {
           skillMap.set(skill.name, skill);
@@ -108,6 +110,7 @@ export async function loadSkillsFromDir(options: {
       defaultName: baseName,
       scope: options.scope,
       namePrefix,
+      depth,
     });
     if (skill && !skillMap.has(skill.name)) {
       skillMap.set(skill.name, skill);
