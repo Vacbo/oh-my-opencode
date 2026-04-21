@@ -37,7 +37,7 @@ export const OhMyOpenCodeConfigSchema = z.object({
   /** Paths to external agent definition files (.md or .json) */
   agent_definitions: AgentDefinitionsConfigSchema,
   disabled_mcps: z.array(AnyMcpNameSchema).optional(),
-  disabled_agents: z.array(z.string()).optional(),
+  disabled_agents: z.array(NonBlankStringSchema).optional(),
   /**
    * Skills to hide from discovery. Accepts any skill name, not just builtins.
    * Matches against the skill's registered name (e.g. "review-work",
@@ -46,14 +46,19 @@ export const OhMyOpenCodeConfigSchema = z.object({
    * strings are rejected so typos surface during config validation.
    */
   disabled_skills: z.array(NonBlankStringSchema).optional(),
-  disabled_hooks: z.array(z.string()).optional(),
+  disabled_hooks: z.array(NonBlankStringSchema).optional(),
   /**
-   * Commands to hide. Accepts any command name, not just builtins. Unknown
-   * names are a silent no-op. Whitespace-only strings are rejected.
+   * Builtin commands to hide from the command picker. Only the OmO builtin
+   * commands (e.g. init-deep, ralph-loop, refactor, start-work) pass through
+   * this filter; user-defined commands loaded from .opencode/commands/ and
+   * skill-sourced commands are always spread on top without consulting this
+   * list. Accepts any string for forward compatibility with new builtin
+   * commands. Unknown names are a silent no-op. Whitespace-only strings are
+   * rejected.
    */
   disabled_commands: z.array(NonBlankStringSchema).optional(),
   /** Disable specific tools by name (e.g., ["todowrite", "todoread"]) */
-  disabled_tools: z.array(z.string()).optional(),
+  disabled_tools: z.array(NonBlankStringSchema).optional(),
   mcp_env_allowlist: z.array(z.string()).optional(),
   /** Enable hashline_edit tool/hook integrations (default: false) */
   hashline_edit: z.boolean().optional(),
