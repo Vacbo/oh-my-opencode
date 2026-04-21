@@ -22,6 +22,12 @@ import { TmuxConfigSchema } from "./tmux"
 import { StartWorkConfigSchema } from "./start-work"
 import { WebsearchConfigSchema } from "./websearch"
 
+const NonBlankStringSchema = z
+  .string()
+  .refine((value) => value.trim().length > 0, {
+    message: "must not be empty or whitespace-only",
+  })
+
 export const OhMyOpenCodeConfigSchema = z.object({
   $schema: z.string().optional(),
   /** Enable new task system (default: false) */
@@ -33,18 +39,19 @@ export const OhMyOpenCodeConfigSchema = z.object({
   disabled_mcps: z.array(AnyMcpNameSchema).optional(),
   disabled_agents: z.array(z.string()).optional(),
   /**
-   * Skills to hide from discovery. Accepts any skill name — not just builtins.
+   * Skills to hide from discovery. Accepts any skill name, not just builtins.
    * Matches against the skill's registered name (e.g. "review-work",
    * "qs-anti-patterns", or user-installed skill names). Unknown names are a
-   * silent no-op so stale entries don't break config parsing.
+   * silent no-op so stale entries don't break config parsing. Whitespace-only
+   * strings are rejected so typos surface during config validation.
    */
-  disabled_skills: z.array(z.string().min(1)).optional(),
+  disabled_skills: z.array(NonBlankStringSchema).optional(),
   disabled_hooks: z.array(z.string()).optional(),
   /**
-   * Commands to hide. Accepts any command name — not just builtins. Unknown
-   * names are a silent no-op.
+   * Commands to hide. Accepts any command name, not just builtins. Unknown
+   * names are a silent no-op. Whitespace-only strings are rejected.
    */
-  disabled_commands: z.array(z.string().min(1)).optional(),
+  disabled_commands: z.array(NonBlankStringSchema).optional(),
   /** Disable specific tools by name (e.g., ["todowrite", "todoread"]) */
   disabled_tools: z.array(z.string()).optional(),
   mcp_env_allowlist: z.array(z.string()).optional(),
