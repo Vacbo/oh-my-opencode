@@ -1,11 +1,8 @@
 import { promises as fs } from "fs";
-import { basename, join } from "path";
-import { resolveSymlinkAsync, isMarkdownFile } from "../../shared/file-utils";
+import { join } from "path";
+import { resolveSymlinkAsync } from "../../shared/file-utils";
 import type { LoadedSkill, SkillScope } from "./types";
-import {
-  inferSkillNameFromFileName,
-  loadSkillFromPath,
-} from "./loaded-skill-from-path";
+import { loadSkillFromPath } from "./loaded-skill-from-path";
 
 export async function loadSkillsFromDir(options: {
   skillsDir: string;
@@ -22,21 +19,11 @@ export async function loadSkillsFromDir(options: {
     .readdir(options.skillsDir, { withFileTypes: true })
     .catch(() => []);
   const skillMap = new Map<string, LoadedSkill>();
-  const currentDirName = basename(options.skillsDir);
 
   const directories = entries.filter(
     (entry) =>
       !entry.name.startsWith(".") &&
       (entry.isDirectory() || entry.isSymbolicLink()),
-  );
-  const files = entries.filter(
-    (entry) =>
-      !entry.name.startsWith(".") &&
-      !entry.isDirectory() &&
-      !entry.isSymbolicLink() &&
-      entry.name !== "SKILL.md" &&
-      entry.name !== `${currentDirName}.md` &&
-      isMarkdownFile(entry),
   );
 
   for (const entry of directories) {
@@ -61,7 +48,7 @@ export async function loadSkillsFromDir(options: {
       }
       directorySkillLoaded = true;
     } catch {
-      // no SKILL.md
+      // no SKILL.md in this directory; try {dirName}.md fallback below
     }
 
     if (!directorySkillLoaded) {
@@ -80,7 +67,7 @@ export async function loadSkillsFromDir(options: {
           skillMap.set(skill.name, skill);
         }
       } catch {
-        // no named md
+        // no entrypoint file in this directory; recurse below if depth allows
       }
     }
 
@@ -98,22 +85,6 @@ export async function loadSkillsFromDir(options: {
           skillMap.set(nestedSkill.name, nestedSkill);
         }
       }
-    }
-  }
-
-  for (const entry of files) {
-    const entryPath = join(options.skillsDir, entry.name);
-    const baseName = inferSkillNameFromFileName(entryPath);
-    const skill = await loadSkillFromPath({
-      skillPath: entryPath,
-      resolvedPath: options.skillsDir,
-      defaultName: baseName,
-      scope: options.scope,
-      namePrefix,
-      depth,
-    });
-    if (skill && !skillMap.has(skill.name)) {
-      skillMap.set(skill.name, skill);
     }
   }
 
