@@ -50,7 +50,10 @@ export async function applyCommandConfig(params: {
   }
 
   const hideNestedByDefault = resolveHideNestedByDefault(params.pluginConfig.skills);
-  const slashOptions = { hideNestedByDefault };
+  const slashOptions = {
+    hideNestedByDefault,
+    keyAssignedTo: new Map<string, string>(),
+  };
 
   const [
     configSourceSkills,

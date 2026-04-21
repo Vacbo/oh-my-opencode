@@ -12,6 +12,16 @@ export interface SkillsToCommandDefinitionRecordOptions {
    * affected by this option.
    */
   hideNestedByDefault?: boolean
+  /**
+   * Shared slash-key ownership map used to resolve flat-name collisions
+   * across multiple skill sources (user vs project vs opencode vs
+   * opencode-project). The command-config handler passes a single map
+   * across every skillsToCommandDefinitionRecord call so a nested skill
+   * in one source cannot claim a flat name already owned by a skill in
+   * another source; it falls back to its path-prefixed form instead.
+   * When omitted, each call uses its own map (single-source mode).
+   */
+  keyAssignedTo?: Map<string, string>
 }
 
 export function skillsToCommandDefinitionRecord(
@@ -20,7 +30,7 @@ export function skillsToCommandDefinitionRecord(
 ): Record<string, CommandDefinition> {
   const hideNestedByDefault = options.hideNestedByDefault ?? false
   const result: Record<string, CommandDefinition> = {}
-  const keyAssignedTo = new Map<string, string>()
+  const keyAssignedTo = options.keyAssignedTo ?? new Map<string, string>()
 
   const topLevel: LoadedSkill[] = []
   const nested: LoadedSkill[] = []
@@ -33,7 +43,10 @@ export function skillsToCommandDefinitionRecord(
   }
 
   for (const skill of topLevel) {
-    if (!isVisibleInSlash(skill, false)) continue
+    if (!isVisibleInSlash(skill, false)) {
+      keyAssignedTo.set(skill.name, skill.name)
+      continue
+    }
     registerSkill(result, keyAssignedTo, skill.name, skill)
   }
 
