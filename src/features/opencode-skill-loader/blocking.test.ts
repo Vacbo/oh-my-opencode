@@ -17,13 +17,13 @@ afterEach(() => {
 
 describe("discoverAllSkillsBlocking", () => {
   it("returns skills synchronously from valid directories", () => {
-    // given valid skill directory
-    const skillDir = join(TEST_DIR, "skills")
+    // given a skill directory with a proper SKILL.md entrypoint
+    const skillsRoot = join(TEST_DIR, "skills")
+    const skillDir = join(skillsRoot, "test-skill")
     mkdirSync(skillDir, { recursive: true })
 
-    const skillMdPath = join(skillDir, "test-skill.md")
     writeFileSync(
-      skillMdPath,
+      join(skillDir, "SKILL.md"),
       `---
 name: test-skill
 description: A test skill
@@ -31,7 +31,7 @@ description: A test skill
 This is test skill content.`
     )
 
-    const dirs = [skillDir]
+    const dirs = [skillsRoot]
     const scopes: SkillScope[] = ["opencode-project"]
 
     // when discoverAllSkillsBlocking called
@@ -76,14 +76,14 @@ This is test skill content.`
   })
 
   it("handles multiple directories with mixed content", () => {
-    // given multiple directories with valid and invalid skills
+    // given two skills roots, each containing one directory skill with SKILL.md
     const dir1 = join(TEST_DIR, "dir1")
     const dir2 = join(TEST_DIR, "dir2")
-    mkdirSync(dir1, { recursive: true })
-    mkdirSync(dir2, { recursive: true })
+    mkdirSync(join(dir1, "skill1"), { recursive: true })
+    mkdirSync(join(dir2, "skill2"), { recursive: true })
 
     writeFileSync(
-      join(dir1, "skill1.md"),
+      join(dir1, "skill1", "SKILL.md"),
       `---
 name: skill1
 description: First skill
@@ -92,7 +92,7 @@ Skill 1 content.`
     )
 
     writeFileSync(
-      join(dir2, "skill2.md"),
+      join(dir2, "skill2", "SKILL.md"),
       `---
 name: skill2
 description: Second skill
@@ -109,19 +109,19 @@ Skill 2 content.`
     // then returns all valid skills
     expect(skills).toBeArray()
     expect(skills.length).toBe(2)
-    
+
     const skillNames = skills.map(s => s.name).sort()
     expect(skillNames).toEqual(["skill1", "skill2"])
   })
 
   it("skips invalid YAML files", () => {
-    // given directory with invalid YAML
-    const skillDir = join(TEST_DIR, "skills")
-    mkdirSync(skillDir, { recursive: true })
+    // given a skills root with one valid and one invalid SKILL.md directory
+    const skillsRoot = join(TEST_DIR, "skills")
+    mkdirSync(join(skillsRoot, "valid-skill"), { recursive: true })
+    mkdirSync(join(skillsRoot, "invalid-skill"), { recursive: true })
 
-    const validSkillPath = join(skillDir, "valid.md")
     writeFileSync(
-      validSkillPath,
+      join(skillsRoot, "valid-skill", "SKILL.md"),
       `---
 name: valid-skill
 description: Valid skill
@@ -129,9 +129,8 @@ description: Valid skill
 Valid skill content.`
     )
 
-    const invalidSkillPath = join(skillDir, "invalid.md")
     writeFileSync(
-      invalidSkillPath,
+      join(skillsRoot, "invalid-skill", "SKILL.md"),
       `---
 name: invalid skill
 description: [ invalid yaml
@@ -139,7 +138,7 @@ description: [ invalid yaml
 Invalid content.`
     )
 
-    const dirs = [skillDir]
+    const dirs = [skillsRoot]
     const scopes: SkillScope[] = ["opencode-project"]
 
     // when discoverAllSkillsBlocking called
@@ -180,15 +179,15 @@ This is a directory-based skill.`
   })
 
   it("processes large skill sets without timeout", () => {
-    // given directory with many skills (20+)
-    const skillDir = join(TEST_DIR, "many-skills")
-    mkdirSync(skillDir, { recursive: true })
+    // given a skills root with many directory-based skills (20+)
+    const skillsRoot = join(TEST_DIR, "many-skills")
 
     const skillCount = 25
     for (let i = 0; i < skillCount; i++) {
-      const skillPath = join(skillDir, `skill-${i}.md`)
+      const skillDir = join(skillsRoot, `skill-${i}`)
+      mkdirSync(skillDir, { recursive: true })
       writeFileSync(
-        skillPath,
+        join(skillDir, "SKILL.md"),
         `---
 name: skill-${i}
 description: Skill number ${i}
@@ -197,7 +196,7 @@ Content for skill ${i}.`
       )
     }
 
-    const dirs = [skillDir]
+    const dirs = [skillsRoot]
     const scopes: SkillScope[] = ["opencode-project"]
 
     // when discoverAllSkillsBlocking called
