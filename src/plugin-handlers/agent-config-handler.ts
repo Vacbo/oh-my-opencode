@@ -186,6 +186,7 @@ export async function applyAgentConfig(params: {
     disabledSkills,
     useTaskSystem,
     disableOmoEnv,
+    params.pluginConfig.experimental?.subagent_recursion,
   );
 
   const disabledAgentNames = new Set(
