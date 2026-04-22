@@ -96,8 +96,19 @@ jobs:
           test -f dist/index.js || (echo "ERROR: dist/index.js not found!" && exit 1)
           test -f dist/index.d.ts || (echo "ERROR: dist/index.d.ts not found!" && exit 1)
 
+      - name: Fail PR on schema drift
+        if: github.event_name == 'pull_request'
+        run: |
+          if git diff --quiet assets/oh-my-opencode.schema.json; then
+            echo "Schema is up to date"
+          else
+            echo "::error::assets/oh-my-opencode.schema.json is out of sync with src/config/schema/. Run 'bun run build:schema' locally and commit the result."
+            git diff assets/oh-my-opencode.schema.json
+            exit 1
+          fi
+
       - name: Auto-commit schema changes
-        if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+        if: github.event_name == 'push' && (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/dev')
         run: |
           if git diff --quiet assets/oh-my-opencode.schema.json; then
             echo "No schema changes to commit"
