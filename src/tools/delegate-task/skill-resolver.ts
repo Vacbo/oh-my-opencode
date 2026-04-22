@@ -1,6 +1,5 @@
 import type { GitMasterConfig, BrowserAutomationProvider } from "../../config/schema"
-import { resolveMultipleSkillsAsync } from "../../features/opencode-skill-loader/skill-content"
-import { discoverSkills } from "../../features/opencode-skill-loader"
+import { resolveMultipleSkillsAsync, getAllSkills } from "../../features/opencode-skill-loader/skill-content"
 
 export async function resolveSkillContent(
   skills: string[],
@@ -10,9 +9,11 @@ export async function resolveSkillContent(
     return { content: undefined, contents: [], error: null }
   }
 
-  const allSkills = await discoverSkills({ includeClaudeCodePaths: true, directory: options?.directory })
+  const allSkills = await getAllSkills(options)
+  const skillsByNameLower = new Map(allSkills.map((skill) => [skill.name.toLowerCase(), skill]))
+
   const modelDisabled = skills.filter((name) => {
-    const match = allSkills.find((skill) => skill.name === name)
+    const match = skillsByNameLower.get(name.toLowerCase())
     return match?.disableModelInvocation === true
   })
   if (modelDisabled.length > 0) {
@@ -22,7 +23,7 @@ export async function resolveSkillContent(
       error:
         `Cannot load skills via task(load_skills=[...]): ${modelDisabled.join(", ")} ` +
         `${modelDisabled.length === 1 ? "has" : "have"} disable-model-invocation: true set in SKILL.md frontmatter. ` +
-        `These skills can only be invoked by the user via the slash-command menu.`,
+        `Model-initiated invocation is blocked for these skills. If a skill is also user-invocable, the user can still trigger it from the slash-command menu.`,
     }
   }
 

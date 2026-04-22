@@ -113,4 +113,38 @@ describe("resolveSkillContent - disable-model-invocation gate", () => {
     expect(result.error).toMatch(/blocked-skill/)
     expect(result.error).not.toMatch(/allowed-skill.*has disable-model-invocation/)
   })
+
+  it("matches skill names case-insensitively (parity with skill tool)", async () => {
+    // given a skill defined with lowercase name
+    const { directory, skillsRoot } = setupSkillsDir()
+    writeSkill(
+      skillsRoot,
+      "mixed-case-skill",
+      `---\nname: mixed-case-skill\ndescription: Test\ndisable-model-invocation: true\n---\nBody\n`,
+    )
+
+    // when requested with mixed case
+    const result = await resolveSkillContent(["Mixed-Case-Skill"], { directory, ...cacheBypassOptions })
+
+    // then gate still catches it despite casing mismatch
+    expect(result.error).toMatch(/disable-model-invocation: true/)
+  })
+
+  it("does not promise slash availability when userInvocable also blocks", async () => {
+    // given a skill that is BOTH model-disabled AND user-invocable: false
+    const { directory, skillsRoot } = setupSkillsDir()
+    writeSkill(
+      skillsRoot,
+      "completely-blocked",
+      `---\nname: completely-blocked\ndescription: Totally blocked\ndisable-model-invocation: true\nuser-invocable: false\n---\nBody\n`,
+    )
+
+    // when the model requests it
+    const result = await resolveSkillContent(["completely-blocked"], { directory, ...cacheBypassOptions })
+
+    // then the error wording states model-initiated invocation is blocked
+    // but does NOT claim slash invocation is a working alternative
+    expect(result.error).toMatch(/Model-initiated invocation is blocked/)
+    expect(result.error).toMatch(/if a skill is also user-invocable/i)
+  })
 })

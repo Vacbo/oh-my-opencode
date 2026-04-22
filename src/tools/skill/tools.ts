@@ -119,7 +119,7 @@ export function createSkillTool(options: SkillLoadOptions = {}): ToolDefinition 
         if (matchedSkill.disableModelInvocation === true) {
           throw new Error(
             `Skill "${matchedSkill.name}" has disable-model-invocation: true set in its SKILL.md frontmatter. ` +
-            `It can only be invoked by the user via the slash-command menu, not by the model via the skill tool.`
+            `Model-initiated invocation is blocked. If this skill is also user-invocable, the user can still trigger it from the slash-command menu.`
           )
         }
 
