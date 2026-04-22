@@ -250,6 +250,9 @@ export function createOracleAgent(model: string): AgentConfig {
     "task",
   ]);
 
+  const isGpt = isGptModel(model);
+  const basePrompt = isGpt ? ORACLE_GPT_PROMPT : ORACLE_DEFAULT_PROMPT;
+
   const base = {
     description:
       "Read-only consultation agent. High-IQ reasoning specialist for debugging hard problems and high-difficulty architecture design. (Oracle - OhMyOpenCode)",
@@ -257,13 +260,12 @@ export function createOracleAgent(model: string): AgentConfig {
     model,
     temperature: 0.1,
     ...restrictions,
-    prompt: ORACLE_DEFAULT_PROMPT,
+    prompt: basePrompt,
   } as AgentConfig;
 
-  if (isGptModel(model)) {
+  if (isGpt) {
     return {
       ...base,
-      prompt: ORACLE_GPT_PROMPT,
       reasoningEffort: "medium",
       textVerbosity: "high",
     } as AgentConfig;

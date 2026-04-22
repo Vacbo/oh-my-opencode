@@ -33,14 +33,7 @@ export function createExploreAgent(model: string): AgentConfig {
     "call_omo_agent",
   ])
 
-  return {
-    description:
-      'Contextual grep for codebases. Answers "Where is X?", "Which file has Y?", "Find the code that does Z". Fire multiple in parallel for broad searches. Specify thoroughness: "quick" for basic, "medium" for moderate, "very thorough" for comprehensive analysis. (Explore - OhMyOpenCode)',
-    mode: MODE,
-    model,
-    temperature: 0.1,
-    ...restrictions,
-    prompt: `You are a codebase search specialist. Your job: find files and code, return actionable results.
+  const basePrompt = `You are a codebase search specialist. Your job: find files and code, return actionable results.
 
 ## Your Mission
 
@@ -116,7 +109,16 @@ Use the right tool for the job:
 - **File patterns** (find by name/extension): glob
 - **History/evolution** (when added, who changed): git commands
 
-Flood with parallel calls. Cross-validate findings across multiple tools.`,
+Flood with parallel calls. Cross-validate findings across multiple tools.`
+
+  return {
+    description:
+      'Contextual grep for codebases. Answers "Where is X?", "Which file has Y?", "Find the code that does Z". Fire multiple in parallel for broad searches. Specify thoroughness: "quick" for basic, "medium" for moderate, "very thorough" for comprehensive analysis. (Explore - OhMyOpenCode)',
+    mode: MODE,
+    model,
+    temperature: 0.1,
+    ...restrictions,
+    prompt: basePrompt,
   }
 }
 createExploreAgent.mode = MODE

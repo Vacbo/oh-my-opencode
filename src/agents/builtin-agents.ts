@@ -1,6 +1,7 @@
 import type { AgentConfig } from "@opencode-ai/sdk"
 import type { BuiltinAgentName, AgentOverrides, AgentFactory, AgentPromptMetadata } from "./types"
 import type { CategoriesConfig, GitMasterConfig } from "../config/schema"
+import type { SubagentRecursionConfig } from "../config/schema/experimental"
 import type { LoadedSkill } from "../features/opencode-skill-loader/types"
 import type { BrowserAutomationProvider } from "../config/schema"
 import { createSisyphusAgent } from "./sisyphus"
@@ -71,7 +72,8 @@ export async function createBuiltinAgents(
   uiSelectedModel?: string,
   disabledSkills?: Set<string>,
   useTaskSystem = false,
-  disableOmoEnv = false
+  disableOmoEnv = false,
+  subagentRecursionConfig?: SubagentRecursionConfig,
 ): Promise<Record<string, AgentConfig>> {
 
   const connectedProviders = readConnectedProvidersCache()
@@ -117,6 +119,7 @@ export async function createBuiltinAgents(
     isFirstRunNoCache,
     disabledSkills,
     disableOmoEnv,
+    subagentRecursionConfig,
   })
 
   const sisyphusConfig = maybeCreateSisyphusConfig({

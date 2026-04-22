@@ -2,7 +2,9 @@ import type { AgentConfig } from "@opencode-ai/sdk"
 import type { BuiltinAgentName, AgentOverrides, AgentPromptMetadata } from "../types"
 import type { CategoryConfig, GitMasterConfig } from "../../config/schema"
 import type { BrowserAutomationProvider } from "../../config/schema"
+import type { SubagentRecursionConfig } from "../../config/schema/experimental"
 import type { AvailableAgent } from "../dynamic-agent-prompt-builder"
+import { appendSubagentRecursionPrompt } from "../subagent-recursion-prompt"
 import { AGENT_MODEL_REQUIREMENTS, isModelAvailable } from "../../shared"
 import { buildAgent, isFactory } from "../agent-builder"
 import { applyOverrides } from "./agent-overrides"
@@ -26,6 +28,7 @@ export function collectPendingBuiltinAgents(input: {
   disabledSkills?: Set<string>
   useTaskSystem?: boolean
   disableOmoEnv?: boolean
+  subagentRecursionConfig?: SubagentRecursionConfig
 }): { pendingAgentConfigs: Map<string, AgentConfig>; availableAgents: AvailableAgent[] } {
   const {
     agentSources,
@@ -42,6 +45,7 @@ export function collectPendingBuiltinAgents(input: {
     isFirstRunNoCache,
     disabledSkills,
     disableOmoEnv = false,
+    subagentRecursionConfig,
   } = input
 
   const availableAgents: AvailableAgent[] = []
@@ -104,6 +108,13 @@ export function collectPendingBuiltinAgents(input: {
     }
 
     config = applyOverrides(config, override, mergedCategories, directory)
+
+    if (config.prompt) {
+      config = {
+        ...config,
+        prompt: appendSubagentRecursionPrompt(config.prompt, agentName, subagentRecursionConfig),
+      }
+    }
 
     // Store for later - will be added after sisyphus and hephaestus
     pendingAgentConfigs.set(name, config)
