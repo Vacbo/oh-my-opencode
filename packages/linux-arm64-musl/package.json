@@ -1,6 +1,6 @@
 {
   "name": "@vacbo/oh-my-opencode-linux-arm64-musl",
-  "version": "3.19.0",
+  "version": "3.19.1",
   "description": "Platform-specific binary for @vacbo/oh-my-opencode (linux-arm64-musl)",
   "license": "MIT",
   "repository": {
