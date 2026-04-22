@@ -98,13 +98,6 @@ export function collectPendingBuiltinAgents(input: {
 
     let config = buildAgent(source, model, mergedCategories, gitMasterConfig, browserProvider, disabledSkills)
 
-    if (config.prompt) {
-      config = {
-        ...config,
-        prompt: appendSubagentRecursionPrompt(config.prompt, agentName, subagentRecursionConfig),
-      }
-    }
-
     // Apply resolved variant from model fallback chain
     if (resolvedVariant) {
       config = { ...config, variant: resolvedVariant }
@@ -115,6 +108,13 @@ export function collectPendingBuiltinAgents(input: {
     }
 
     config = applyOverrides(config, override, mergedCategories, directory)
+
+    if (config.prompt) {
+      config = {
+        ...config,
+        prompt: appendSubagentRecursionPrompt(config.prompt, agentName, subagentRecursionConfig),
+      }
+    }
 
     // Store for later - will be added after sisyphus and hephaestus
     pendingAgentConfigs.set(name, config)
