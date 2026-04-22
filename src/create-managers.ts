@@ -69,6 +69,7 @@ export function createManagers(args: {
     pluginConfig.background_task,
     {
       tmuxConfig,
+      subagentRecursionConfig: pluginConfig.experimental?.subagent_recursion,
       onSubagentSessionCreated: async (event: SubagentSessionCreatedEvent) => {
         log("[create-managers] onSubagentSessionCreated callback received", {
           sessionID: event.sessionID,

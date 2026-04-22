@@ -1,5 +1,6 @@
 import type { DelegateTaskArgs, OpencodeClient, DelegatedModelConfig } from "./types"
 import type { SisyphusAgentConfig } from "../../config/schema"
+import type { SubagentRecursionConfig } from "../../config/schema/experimental"
 import { isPlanFamily } from "./constants"
 import { buildTaskPrompt } from "./prompt-builder"
 import {
@@ -7,7 +8,7 @@ import {
   promptWithModelSuggestionRetry,
 } from "../../shared/model-suggestion-retry"
 import { formatDetailedError } from "./error-formatting"
-import { getAgentToolRestrictions } from "../../shared/agent-tool-restrictions"
+import { getAgentToolRestrictionsForSpawn } from "../../shared/agent-tool-restrictions"
 import { stripInvisibleAgentCharacters } from "../../shared/agent-display-names"
 import { applySessionPromptParams } from "../../shared/session-prompt-params-helpers"
 import { setSessionTools } from "../../shared/session-tools-store"
@@ -62,6 +63,7 @@ export async function sendSyncPrompt(
     toastManager: { removeTask: (id: string) => void } | null | undefined
     taskId: string | undefined
     sisyphusAgentConfig?: SisyphusAgentConfig
+    subagentRecursionConfig?: SubagentRecursionConfig
   },
   deps: SendSyncPromptDeps = sendSyncPromptDeps
 ): Promise<string | null> {
@@ -72,7 +74,7 @@ export async function sendSyncPrompt(
     task: allowTask,
     call_omo_agent: true,
     question: false,
-    ...getAgentToolRestrictions(input.agentToUse),
+    ...getAgentToolRestrictionsForSpawn(input.agentToUse, input.subagentRecursionConfig),
   }
   setSessionTools(input.sessionID, tools)
 

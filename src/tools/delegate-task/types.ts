@@ -1,6 +1,7 @@
 import type { PluginInput } from "@opencode-ai/plugin"
 import type { BackgroundManager } from "../../features/background-agent"
 import type { CategoriesConfig, GitMasterConfig, BrowserAutomationProvider, AgentOverrides, SisyphusAgentConfig } from "../../config/schema"
+import type { SubagentRecursionConfig } from "../../config/schema/experimental"
 import type {
   AvailableCategory,
   AvailableSkill,
@@ -70,6 +71,7 @@ export interface DelegateTaskToolOptions {
   sisyphusAgentConfig?: SisyphusAgentConfig
   onSyncSessionCreated?: (event: SyncSessionCreatedEvent) => Promise<void>
   syncPollTimeoutMs?: number
+  subagentRecursionConfig?: SubagentRecursionConfig
 }
 
 import type { DelegatedModelConfig } from "../../shared/model-resolution-types"

@@ -3,6 +3,7 @@ import { ALLOWED_AGENTS, CALL_OMO_AGENT_DESCRIPTION } from "./constants"
 import type { AllowedAgentType, CallOmoAgentArgs, ToolContextWithMetadata } from "./types"
 import type { BackgroundManager } from "../../features/background-agent"
 import type { CategoriesConfig, AgentOverrides } from "../../config/schema"
+import type { SubagentRecursionConfig } from "../../config/schema/experimental"
 import type { DelegatedModelConfig } from "../../shared/model-resolution-types"
 import type { FallbackEntry } from "../../shared/model-requirements"
 import { AGENT_MODEL_REQUIREMENTS } from "../../shared/model-requirements"
@@ -82,6 +83,7 @@ export function createCallOmoAgent(
   disabledAgents: string[] = [],
   agentOverrides?: AgentOverrides,
   userCategories?: CategoriesConfig,
+  subagentRecursionConfig?: SubagentRecursionConfig,
 ): ToolDefinition {
   const agentDescriptions = ALLOWED_AGENTS.map(
     (name) => `- ${name}: Specialized agent for ${name} tasks`,
@@ -158,14 +160,14 @@ export function createCallOmoAgent(
         let spawnReservation: Awaited<ReturnType<BackgroundManager["reserveSubagentSpawn"]>> | undefined
         try {
           spawnReservation = await backgroundManager.reserveSubagentSpawn(toolCtx.sessionID)
-          return await executeSync(args, toolCtx, ctx, undefined, fallbackChain, spawnReservation, resolvedModel)
+          return await executeSync(args, toolCtx, ctx, undefined, fallbackChain, spawnReservation, resolvedModel, subagentRecursionConfig)
         } catch (error) {
           spawnReservation?.rollback()
           return `Error: ${error instanceof Error ? error.message : String(error)}`
         }
       }
 
-      return await executeSync(args, toolCtx, ctx, undefined, fallbackChain, undefined, resolvedModel)
+      return await executeSync(args, toolCtx, ctx, undefined, fallbackChain, undefined, resolvedModel, subagentRecursionConfig)
     },
   });
 }
