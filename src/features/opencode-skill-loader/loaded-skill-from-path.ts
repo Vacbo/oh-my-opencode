@@ -68,6 +68,7 @@ export async function loadSkillFromPath(options: {
       depth,
       userInvocable: data["user-invocable"],
       flatName: isNested ? baseName : undefined,
+      disableModelInvocation: data["disable-model-invocation"],
     }
   } catch {
     return null

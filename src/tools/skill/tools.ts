@@ -116,6 +116,13 @@ export function createSkillTool(options: SkillLoadOptions = {}): ToolDefinition 
       const matchedSkill = matchSkillByName(skills, requestedName)
 
       if (matchedSkill) {
+        if (matchedSkill.disableModelInvocation === true) {
+          throw new Error(
+            `Skill "${matchedSkill.name}" has disable-model-invocation: true set in its SKILL.md frontmatter. ` +
+            `Model-initiated invocation is blocked. If this skill is also user-invocable, the user can still trigger it from the slash-command menu.`
+          )
+        }
+
         await ctx?.ask({
           permission: "skill",
           patterns: [matchedSkill.name],
