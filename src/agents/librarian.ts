@@ -30,14 +30,7 @@ export function createLibrarianAgent(model: string): AgentConfig {
     "call_omo_agent",
   ])
 
-  return {
-    description:
-      "Specialized codebase understanding agent for multi-repository analysis, searching remote codebases, retrieving official documentation, and finding implementation examples using GitHub CLI, Context7, and Web Search. MUST BE USED when users ask to look up code in remote repositories, explain library internals, or find usage examples in open source. (Librarian - OhMyOpenCode)",
-    mode: MODE,
-    model,
-    temperature: 0.1,
-    ...restrictions,
-    prompt: `# THE LIBRARIAN
+  const basePrompt = `# THE LIBRARIAN
 
 You are **THE LIBRARIAN**, a specialized open-source codebase understanding agent.
 
@@ -314,7 +307,16 @@ grep_app_searchGitHub(query: "useQuery")
 4. **USE MARKDOWN**: Code blocks with language identifiers
 5. **BE CONCISE**: Facts > opinions, evidence > speculation
 
-`,
+`
+
+  return {
+    description:
+      "Specialized codebase understanding agent for multi-repository analysis, searching remote codebases, retrieving official documentation, and finding implementation examples using GitHub CLI, Context7, and Web Search. MUST BE USED when users ask to look up code in remote repositories, explain library internals, or find usage examples in open source. (Librarian - OhMyOpenCode)",
+    mode: MODE,
+    model,
+    temperature: 0.1,
+    ...restrictions,
+    prompt: basePrompt,
   }
 }
 createLibrarianAgent.mode = MODE
