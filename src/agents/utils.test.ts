@@ -1537,4 +1537,39 @@ describe("Deadlock prevention - fetchAvailableModels must not receive client", (
     connectedSpy.mockRestore()
     fetchSpy.mockRestore()
   })
+
+  test("createBuiltinAgents threads subagentRecursionConfig into subagent prompts", async () => {
+    const fetchSpy = spyOn(shared, "fetchAvailableModels").mockResolvedValue(
+      new Set([
+        "openai/gpt-5.4",
+        "anthropic/claude-opus-4-7",
+        "fireworks-ai/accounts/fireworks/routers/kimi-k2p5-turbo",
+      ])
+    )
+
+    try {
+      const agents = await createBuiltinAgents(
+        [],
+        {},
+        undefined,
+        TEST_DEFAULT_MODEL,
+        undefined,
+        undefined,
+        [],
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        false,
+        false,
+        { enabled: true, allowed_agents: ["explore", "librarian", "oracle"] },
+      )
+
+      expect(agents.explore.prompt).toContain("Nested Delegation Available")
+      expect(agents.librarian.prompt).toContain("Nested Delegation Available")
+      expect(agents.oracle.prompt).toContain("Nested Delegation Available")
+    } finally {
+      fetchSpy.mockRestore()
+    }
+  })
 })
