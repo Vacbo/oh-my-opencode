@@ -8,8 +8,10 @@ they ask "why do we have this?".
 At snapshot time: 43 commits.
 
 **Snapshot**: `git log upstream/dev..dev` as of 2026-04-21, fork HEAD
-`5cd78886`, upstream HEAD `e0bcf3e2`, last sync target `v3.17.0` per
-`upstream-version.txt`.
+`5cd78886`, upstream HEAD `e0bcf3e2`, last sync target `v3.17.4` per
+`upstream-version.txt` (updated from `v3.17.0` in a companion PR after
+the conservative-sync window merged via commits `cb15a7b6 / 630a11d6 /
+c9350c67`).
 
 ## Categories
 
