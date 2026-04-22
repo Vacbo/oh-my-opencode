@@ -1,6 +1,6 @@
 {
   "name": "@vacbo/oh-my-opencode-darwin-arm64",
-  "version": "3.18.0",
+  "version": "3.19.0",
   "description": "Platform-specific binary for @vacbo/oh-my-opencode (darwin-arm64)",
   "license": "MIT",
   "repository": {

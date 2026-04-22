@@ -1,6 +1,6 @@
 {
   "name": "@vacbo/oh-my-opencode",
-  "version": "3.18.0",
+  "version": "3.19.0",
   "description": "The Best AI Agent Harness - Batteries-Included OpenCode Plugin with Multi-Model Orchestration, Parallel Background Agents, and Crafted LSP/AST Tools",
   "main": "./dist/index.js",
   "types": "dist/index.d.ts",
@@ -81,17 +81,17 @@
     "typescript": "^5.7.3"
   },
   "optionalDependencies": {
-    "@vacbo/oh-my-opencode-darwin-arm64": "3.18.0",
-    "@vacbo/oh-my-opencode-darwin-x64": "3.18.0",
-    "@vacbo/oh-my-opencode-darwin-x64-baseline": "3.18.0",
-    "@vacbo/oh-my-opencode-linux-arm64": "3.18.0",
-    "@vacbo/oh-my-opencode-linux-arm64-musl": "3.18.0",
-    "@vacbo/oh-my-opencode-linux-x64": "3.18.0",
-    "@vacbo/oh-my-opencode-linux-x64-baseline": "3.18.0",
-    "@vacbo/oh-my-opencode-linux-x64-musl": "3.18.0",
-    "@vacbo/oh-my-opencode-linux-x64-musl-baseline": "3.18.0",
-    "@vacbo/oh-my-opencode-windows-x64": "3.18.0",
-    "@vacbo/oh-my-opencode-windows-x64-baseline": "3.18.0"
+    "@vacbo/oh-my-opencode-darwin-arm64": "3.19.0",
+    "@vacbo/oh-my-opencode-darwin-x64": "3.19.0",
+    "@vacbo/oh-my-opencode-darwin-x64-baseline": "3.19.0",
+    "@vacbo/oh-my-opencode-linux-arm64": "3.19.0",
+    "@vacbo/oh-my-opencode-linux-arm64-musl": "3.19.0",
+    "@vacbo/oh-my-opencode-linux-x64": "3.19.0",
+    "@vacbo/oh-my-opencode-linux-x64-baseline": "3.19.0",
+    "@vacbo/oh-my-opencode-linux-x64-musl": "3.19.0",
+    "@vacbo/oh-my-opencode-linux-x64-musl-baseline": "3.19.0",
+    "@vacbo/oh-my-opencode-windows-x64": "3.19.0",
+    "@vacbo/oh-my-opencode-windows-x64-baseline": "3.19.0"
   },
   "overrides": {},
   "trustedDependencies": [
