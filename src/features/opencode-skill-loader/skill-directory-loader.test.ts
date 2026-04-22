@@ -126,4 +126,41 @@ describe("loadSkillsFromDir", () => {
     expect(byName.get("visible-skill")?.userInvocable).toBe(true);
     expect(byName.get("default-skill")?.userInvocable).toBeUndefined();
   });
+
+  it("reads disable-model-invocation from SKILL.md frontmatter", async () => {
+    // given
+    const tempDir = mkdtempSync(join(tmpdir(), "omo-skill-directory-loader-"));
+    tempDirs.push(tempDir);
+    const rootSkillsDir = join(tempDir, "skills");
+
+    mkdirSync(join(rootSkillsDir, "user-only-skill"), { recursive: true });
+    writeFileSync(
+      join(rootSkillsDir, "user-only-skill", "SKILL.md"),
+      `---\nname: user-only-skill\ndescription: User only\ndisable-model-invocation: true\n---\nBody\n`,
+    );
+
+    mkdirSync(join(rootSkillsDir, "model-allowed-skill"), { recursive: true });
+    writeFileSync(
+      join(rootSkillsDir, "model-allowed-skill", "SKILL.md"),
+      `---\nname: model-allowed-skill\ndescription: Model allowed\ndisable-model-invocation: false\n---\nBody\n`,
+    );
+
+    mkdirSync(join(rootSkillsDir, "default-invocation-skill"), { recursive: true });
+    writeFileSync(
+      join(rootSkillsDir, "default-invocation-skill", "SKILL.md"),
+      `---\nname: default-invocation-skill\ndescription: No disable-model-invocation field\n---\nBody\n`,
+    );
+
+    // when
+    const loadedSkills = await loadSkillsFromDir({
+      skillsDir: rootSkillsDir,
+      scope: "user",
+    });
+
+    // then
+    const byName = new Map(loadedSkills.map((s) => [s.name, s]));
+    expect(byName.get("user-only-skill")?.disableModelInvocation).toBe(true);
+    expect(byName.get("model-allowed-skill")?.disableModelInvocation).toBe(false);
+    expect(byName.get("default-invocation-skill")?.disableModelInvocation).toBeUndefined();
+  });
 });

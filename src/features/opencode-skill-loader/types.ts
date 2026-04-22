@@ -72,4 +72,13 @@ export interface LoadedSkill {
    * (/parent/child) used internally for deduplication.
    */
   flatName?: string
+  /**
+   * Raw Claude Code `disable-model-invocation` frontmatter value. When
+   * true, the skill is blocked from model-initiated invocation paths:
+   * the `skill(name=...)` tool and the `task(load_skills=[...])` delegation.
+   * Slash-command invocation remains available to the user (those go
+   * through the `userInvocable` gate instead). Defaults to false per
+   * spec (https://docs.claude.com/en/docs/claude-code/skills).
+   */
+  disableModelInvocation?: boolean
 }
