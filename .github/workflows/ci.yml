@@ -96,18 +96,51 @@ jobs:
           test -f dist/index.js || (echo "ERROR: dist/index.js not found!" && exit 1)
           test -f dist/index.d.ts || (echo "ERROR: dist/index.d.ts not found!" && exit 1)
 
-      - name: Auto-commit schema changes
-        if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+      - name: Fail PR on schema drift
+        if: github.event_name == 'pull_request'
         run: |
-          if git diff --quiet assets/oh-my-opencode.schema.json; then
+          if [ ! -f assets/oh-my-opencode.schema.json ]; then
+            echo "::error::assets/oh-my-opencode.schema.json was deleted. The file is required; run 'bun run build:schema' locally and commit the result."
+            exit 1
+          fi
+          STATUS=$(git status --porcelain assets/oh-my-opencode.schema.json)
+          if [ -z "$STATUS" ]; then
+            echo "Schema is up to date"
+          else
+            echo "::error::assets/oh-my-opencode.schema.json is out of sync with src/config/schema/. Run 'bun run build:schema' locally and commit the result."
+            echo "::group::git status"
+            echo "$STATUS"
+            echo "::endgroup::"
+            echo "::group::git diff"
+            git diff assets/oh-my-opencode.schema.json
+            echo "::endgroup::"
+            exit 1
+          fi
+
+      - name: Auto-commit schema changes
+        if: github.event_name == 'push' && (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/dev')
+        id: schema-commit
+        run: |
+          if [ ! -f assets/oh-my-opencode.schema.json ]; then
+            echo "::error::assets/oh-my-opencode.schema.json is missing. Run 'bun run build:schema' and commit the result."
+            exit 1
+          fi
+          STATUS=$(git status --porcelain assets/oh-my-opencode.schema.json)
+          if [ -z "$STATUS" ]; then
             echo "No schema changes to commit"
+            echo "committed_sha=${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
           else
             git config user.name "github-actions[bot]"
             git config user.email "github-actions[bot]@users.noreply.github.com"
             git add assets/oh-my-opencode.schema.json
             git commit -m "chore: auto-update schema.json"
             git push
+            NEW_SHA=$(git rev-parse HEAD)
+            echo "committed_sha=${NEW_SHA}" >> "$GITHUB_OUTPUT"
           fi
+
+    outputs:
+      committed_sha: ${{ steps.schema-commit.outputs.committed_sha }}
 
   draft-release:
     runs-on: ubuntu-latest
@@ -119,6 +152,7 @@ jobs:
       - uses: actions/checkout@v5
         with:
           fetch-depth: 0
+          ref: ${{ needs.build.outputs.committed_sha || github.sha }}
 
       - run: git fetch --force --tags
 
@@ -140,7 +174,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           NOTES: ${{ steps.notes.outputs.notes }}
-          TARGET_SHA: ${{ github.sha }}
+          TARGET_SHA: ${{ needs.build.outputs.committed_sha || github.sha }}
         run: |
           EXISTING_DRAFT=$(gh release list --json tagName,isDraft --jq '.[] | select(.isDraft == true and .tagName == "next") | .tagName')
           
