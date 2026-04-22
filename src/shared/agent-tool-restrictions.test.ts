@@ -90,6 +90,16 @@ describe("isSubagentRecursionAllowed", () => {
     expect(isSubagentRecursionAllowed("\u200Bexplore", config)).toBe(true)
   })
 
+  it("normalizes invisibles and whitespace in allowed_agents entries", () => {
+    const config: SubagentRecursionConfig = {
+      enabled: true,
+      allowed_agents: ["\u200BExplore ", " \u200Boracle\u200B"],
+    }
+    expect(isSubagentRecursionAllowed("explore", config)).toBe(true)
+    expect(isSubagentRecursionAllowed("oracle", config)).toBe(true)
+    expect(isSubagentRecursionAllowed("librarian", config)).toBe(false)
+  })
+
   it("empty allowed_agents list disables all agents even when enabled is true", () => {
     const config: SubagentRecursionConfig = { enabled: true, allowed_agents: [] }
     expect(isSubagentRecursionAllowed("explore", config)).toBe(false)

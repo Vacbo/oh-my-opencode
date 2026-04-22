@@ -1,5 +1,6 @@
 import type { BackgroundManager } from "../../features/background-agent"
 import type { CategoriesConfig, GitMasterConfig, BrowserAutomationProvider, AgentOverrides, SisyphusAgentConfig } from "../../config/schema"
+import type { SubagentRecursionConfig } from "../../config/schema/experimental"
 import type { OpencodeClient } from "./types"
 
 export interface ExecutorContext {
@@ -14,6 +15,7 @@ export interface ExecutorContext {
   sisyphusAgentConfig?: SisyphusAgentConfig
   onSyncSessionCreated?: (event: { sessionID: string; parentID: string; title: string }) => Promise<void>
   syncPollTimeoutMs?: number
+  subagentRecursionConfig?: SubagentRecursionConfig
 }
 
 export interface ParentContext {

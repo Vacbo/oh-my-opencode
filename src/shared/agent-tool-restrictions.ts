@@ -63,6 +63,10 @@ export function hasAgentToolRestrictions(agentName: string): boolean {
   return Object.keys(restrictions).length > 0
 }
 
+function normalizeAgentName(name: string): string {
+  return stripInvisibleAgentCharacters(name).trim().toLowerCase()
+}
+
 export function isSubagentRecursionAllowed(
   agentName: string,
   recursionConfig: SubagentRecursionConfig | undefined,
@@ -70,8 +74,8 @@ export function isSubagentRecursionAllowed(
   if (!recursionConfig?.enabled) return false
 
   const allowedAgents = recursionConfig.allowed_agents ?? Array.from(DEFAULT_RECURSION_ALLOWED_AGENTS)
-  const stripped = stripInvisibleAgentCharacters(agentName).toLowerCase()
-  return allowedAgents.some((allowed) => allowed.toLowerCase() === stripped)
+  const normalized = normalizeAgentName(agentName)
+  return allowedAgents.some((allowed) => normalizeAgentName(allowed) === normalized)
 }
 
 export function getAgentToolRestrictionsForSpawn(
@@ -82,9 +86,9 @@ export function getAgentToolRestrictionsForSpawn(
   if (!isSubagentRecursionAllowed(agentName, recursionConfig)) {
     return baseRestrictions
   }
-  // Strip call_omo_agent from the denylist so the spawn-site default
-  // (call_omo_agent: true in manager.ts lines 578 and 887) wins. task
-  // stays blocked because it bypasses the OmO budget system.
+  // Omit call_omo_agent so the caller's default (set to true at spawn
+  // sites before spreading restrictions) wins. task stays blocked
+  // because it bypasses the OmO budget system.
   const { call_omo_agent: _dropped, ...rest } = baseRestrictions
   return rest
 }

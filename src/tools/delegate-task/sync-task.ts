@@ -146,6 +146,7 @@ export async function executeSyncTask(
       toastManager,
       taskId,
       sisyphusAgentConfig: executorCtx.sisyphusAgentConfig,
+      subagentRecursionConfig: executorCtx.subagentRecursionConfig,
     })
     if (promptError) {
       const promptResult = await retrySyncPromptWithFallbacks({
@@ -163,6 +164,7 @@ export async function executeSyncTask(
             toastManager,
             taskId,
             sisyphusAgentConfig: executorCtx.sisyphusAgentConfig,
+            subagentRecursionConfig: executorCtx.subagentRecursionConfig,
           })
         },
       })

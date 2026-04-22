@@ -170,6 +170,7 @@ export function createToolRegistry(args: {
     pluginConfig.disabled_agents ?? [],
     pluginConfig.agents,
     pluginConfig.categories,
+    pluginConfig.experimental?.subagent_recursion,
   )
 
   const isMultimodalLookerEnabled = !(pluginConfig.disabled_agents ?? []).some(
@@ -191,6 +192,7 @@ export function createToolRegistry(args: {
     availableSkills: skillContext.availableSkills,
     sisyphusAgentConfig: pluginConfig.sisyphus_agent,
     syncPollTimeoutMs: pluginConfig.background_task?.syncPollTimeoutMs,
+    subagentRecursionConfig: pluginConfig.experimental?.subagent_recursion,
     onSyncSessionCreated: async (event) => {
       log("[index] onSyncSessionCreated callback", {
         sessionID: event.sessionID,

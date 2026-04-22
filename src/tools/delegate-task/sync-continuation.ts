@@ -3,7 +3,7 @@ import type { ExecutorContext, SessionMessage } from "./executor-types"
 import { isPlanFamily } from "./constants"
 import { publishToolMetadata } from "../../features/tool-metadata-store"
 import { getTaskToastManager } from "../../features/task-toast-manager"
-import { getAgentToolRestrictions } from "../../shared/agent-tool-restrictions"
+import { getAgentToolRestrictionsForSpawn } from "../../shared/agent-tool-restrictions"
 import { getMessageDir } from "../../shared"
 import { promptWithModelSuggestionRetry } from "../../shared/model-suggestion-retry"
 import { findNearestMessageWithFields } from "../../features/hook-message-injector"
@@ -19,7 +19,7 @@ export async function executeSyncContinuation(
   executorCtx: ExecutorContext,
   deps: SyncContinuationDeps = syncContinuationDeps
 ): Promise<string> {
-  const { client, syncPollTimeoutMs, sisyphusAgentConfig } = executorCtx
+  const { client, syncPollTimeoutMs, sisyphusAgentConfig, subagentRecursionConfig } = executorCtx
   const toastManager = getTaskToastManager()
   const taskId = `resume_sync_${args.session_id!.slice(0, 8)}`
   const startTime = new Date()
@@ -86,7 +86,7 @@ export async function executeSyncContinuation(
       task: allowTask,
       call_omo_agent: true,
       question: false,
-      ...(resumeAgent ? getAgentToolRestrictions(resumeAgent) : {}),
+      ...(resumeAgent ? getAgentToolRestrictionsForSpawn(resumeAgent, subagentRecursionConfig) : {}),
     }
     setSessionTools(args.session_id!, tools)
 

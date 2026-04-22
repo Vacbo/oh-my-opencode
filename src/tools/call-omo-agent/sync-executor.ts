@@ -2,11 +2,12 @@ import type { CallOmoAgentArgs } from "./types"
 import type { PluginInput } from "@opencode-ai/plugin"
 import { subagentSessions, syncSubagentSessions } from "../../features/claude-code-session-state"
 import { clearSessionFallbackChain, setSessionFallbackChain } from "../../hooks/model-fallback/hook"
-import { getAgentToolRestrictions, log } from "../../shared"
+import { getAgentToolRestrictionsForSpawn, log } from "../../shared"
 import { applySessionPromptParams } from "../../shared/session-prompt-params-helpers"
 import type { DelegatedModelConfig } from "../../shared/model-resolution-types"
 import type { FallbackEntry } from "../../shared/model-requirements"
 import { stripAgentListSortPrefix } from "../../shared/agent-display-names"
+import type { SubagentRecursionConfig } from "../../config/schema/experimental"
 import { waitForCompletion } from "./completion-poller"
 import { processMessages } from "./message-processor"
 import { createOrGetSession } from "./session-creator"
@@ -68,6 +69,7 @@ export async function executeSync(
   fallbackChain?: FallbackEntry[],
   spawnReservation?: SpawnReservation,
   model?: DelegatedModelConfig,
+  subagentRecursionConfig?: SubagentRecursionConfig,
 ): Promise<string> {
   let sessionID: string | undefined
   let createdSessionForExecution = false
@@ -108,7 +110,7 @@ export async function executeSync(
         body: {
           agent: normalizedSubagentType,
           tools: {
-            ...getAgentToolRestrictions(normalizedSubagentType),
+            ...getAgentToolRestrictionsForSpawn(normalizedSubagentType, subagentRecursionConfig),
             task: false,
             question: false,
           },
