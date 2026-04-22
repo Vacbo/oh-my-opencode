@@ -9,7 +9,7 @@ import type {
 import { TaskHistory } from "./task-history"
 import {
   log,
-  getAgentToolRestrictions,
+  getAgentToolRestrictionsForSpawn,
   normalizePromptTools,
   normalizeSDKResponse,
   promptWithModelSuggestionRetry,
@@ -21,6 +21,7 @@ import { setSessionTools } from "../../shared/session-tools-store"
 import { SessionCategoryRegistry } from "../../shared/session-category-registry"
 import { ConcurrencyManager } from "./concurrency"
 import type { BackgroundTaskConfig, TmuxConfig } from "../../config/schema"
+import type { SubagentRecursionConfig } from "../../config/schema/experimental"
 import { isInsideTmux } from "../../shared/tmux"
 import {
   shouldRetryError,
@@ -150,6 +151,7 @@ export class BackgroundManager {
   private concurrencyManager: ConcurrencyManager
   private shutdownTriggered = false
   private config?: BackgroundTaskConfig
+  private subagentRecursionConfig?: SubagentRecursionConfig
   private tmuxEnabled: boolean
   private onSubagentSessionCreated?: OnSubagentSessionCreated
   private onShutdown?: () => void | Promise<void>
@@ -176,6 +178,7 @@ export class BackgroundManager {
       onSubagentSessionCreated?: OnSubagentSessionCreated
       onShutdown?: () => void | Promise<void>
       enableParentSessionNotifications?: boolean
+      subagentRecursionConfig?: SubagentRecursionConfig
     }
   ) {
     this.tasks = new Map()
@@ -186,6 +189,7 @@ export class BackgroundManager {
     this.directory = ctx.directory
     this.concurrencyManager = new ConcurrencyManager(config)
     this.config = config
+    this.subagentRecursionConfig = options?.subagentRecursionConfig
     this.tmuxEnabled = options?.tmuxConfig?.enabled ?? false
     this.onSubagentSessionCreated = options?.onSubagentSessionCreated
     this.onShutdown = options?.onShutdown
@@ -577,7 +581,7 @@ export class BackgroundManager {
           task: false,
           call_omo_agent: true,
           question: false,
-          ...getAgentToolRestrictions(input.agent),
+          ...getAgentToolRestrictionsForSpawn(input.agent, this.subagentRecursionConfig),
         }
         setSessionTools(sessionID, tools)
         return tools
@@ -886,7 +890,7 @@ export class BackgroundManager {
             task: false,
             call_omo_agent: true,
             question: false,
-            ...getAgentToolRestrictions(existingTask.agent),
+            ...getAgentToolRestrictionsForSpawn(existingTask.agent, this.subagentRecursionConfig),
           }
           setSessionTools(existingTask.sessionID!, tools)
           return tools

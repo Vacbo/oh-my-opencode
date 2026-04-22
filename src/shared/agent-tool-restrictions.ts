@@ -1,4 +1,5 @@
 import { stripInvisibleAgentCharacters } from "./agent-display-names"
+import type { SubagentRecursionConfig } from "../config/schema/experimental"
 
 /**
  * Agent tool restrictions for session.prompt calls.
@@ -12,6 +13,8 @@ const EXPLORATION_AGENT_DENYLIST: Record<string, boolean> = {
   task: false,
   call_omo_agent: false,
 }
+
+const DEFAULT_RECURSION_ALLOWED_AGENTS = new Set(["explore", "librarian"])
 
 const AGENT_RESTRICTIONS: Record<string, Record<string, boolean>> = {
   explore: EXPLORATION_AGENT_DENYLIST,
@@ -58,4 +61,30 @@ export function getAgentToolRestrictions(agentName: string): Record<string, bool
 export function hasAgentToolRestrictions(agentName: string): boolean {
   const restrictions = getAgentToolRestrictions(agentName)
   return Object.keys(restrictions).length > 0
+}
+
+export function isSubagentRecursionAllowed(
+  agentName: string,
+  recursionConfig: SubagentRecursionConfig | undefined,
+): boolean {
+  if (!recursionConfig?.enabled) return false
+
+  const allowedAgents = recursionConfig.allowed_agents ?? Array.from(DEFAULT_RECURSION_ALLOWED_AGENTS)
+  const stripped = stripInvisibleAgentCharacters(agentName).toLowerCase()
+  return allowedAgents.some((allowed) => allowed.toLowerCase() === stripped)
+}
+
+export function getAgentToolRestrictionsForSpawn(
+  agentName: string,
+  recursionConfig: SubagentRecursionConfig | undefined,
+): Record<string, boolean> {
+  const baseRestrictions = getAgentToolRestrictions(agentName)
+  if (!isSubagentRecursionAllowed(agentName, recursionConfig)) {
+    return baseRestrictions
+  }
+  // Strip call_omo_agent from the denylist so the spawn-site default
+  // (call_omo_agent: true in manager.ts lines 578 and 887) wins. task
+  // stays blocked because it bypasses the OmO budget system.
+  const { call_omo_agent: _dropped, ...rest } = baseRestrictions
+  return rest
 }
